@@ -13,10 +13,26 @@ from .base import Tool, ToolError, schema, truncate
 READ_ONLY_COMMANDS = {
     "ls", "cat", "head", "tail", "wc", "pwd", "whoami", "date", "uname", "df",
     "du", "free", "uptime", "grep", "rg", "find", "file", "stat", "which", "echo",
-    "ps", "id", "hostname", "lsblk", "tree",
+    "ps", "id", "hostname", "lsblk", "tree", "sort",
 }
 # find flags that delete, execute or write files.
 FIND_UNSAFE = {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"}
+
+
+def _sort_unsafe(args: list[str]) -> bool:
+    """sort writes a file with -o/--output and runs a program with --compress-program.
+
+    GNU accepts abbreviated long options (--out, --comp) and bundled short ones
+    (-rno), so match prefixes and any 'o' in a bundle. Errs toward asking: -to
+    (tab character 'o') asks too.
+    """
+    for arg in args:
+        if arg.startswith("--"):
+            if arg[2:].startswith(("o", "co")):
+                return True
+        elif arg.startswith("-") and "o" in arg[1:]:
+            return True
+    return False
 # Anything that can chain, redirect or substitute makes a command non-trivial.
 # A plain pipe is checked separately: each stage must be read-only on its own.
 SHELL_METACHARS = set(";&<>`$(){}\n")
@@ -51,6 +67,8 @@ def _read_only_stage(words: list[str]) -> bool:
     if not words or words[0] not in READ_ONLY_COMMANDS:
         return False
     if words[0] == "find" and FIND_UNSAFE.intersection(words):
+        return False
+    if words[0] == "sort" and _sort_unsafe(words[1:]):
         return False
     return True
 

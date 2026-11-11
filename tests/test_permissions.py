@@ -15,6 +15,9 @@ from director.tools.shell import is_read_only
     "find ~ -name '*.log' 2>/dev/null | head",
     "du -sh ~/* 2>/dev/null|tail -5",
     "grep 'a|b' notes.txt",
+    "find ~/Documents -type f -printf '%s %p\\n' 2>/dev/null | sort -rn | head -n 1",
+    "sort -t, -k3 -n expenses.csv",
+    "du -s * | sort --numeric-sort --reverse",
 ])
 def test_read_only(cmd):
     assert is_read_only(cmd)
@@ -40,6 +43,13 @@ def test_read_only(cmd):
     "| ls",
     "ls | | wc",
     "grep x '|' rm",
+    "sort -o notes.txt notes.txt",
+    "sort -onotes.txt notes.txt",
+    "sort -rno out.txt in.txt",
+    "sort --output=out.txt in.txt",
+    "sort --out out.txt in.txt",
+    "ls | sort --compress-program=sh",
+    "sort --comp=sh big.txt",
     "echo $(whoami)",
     "ls | sh",
     "find . -delete",
