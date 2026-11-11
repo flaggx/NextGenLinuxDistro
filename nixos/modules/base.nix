@@ -1,5 +1,5 @@
 # What every machine running the director has: Nix itself, locale, the user.
-{ lib, ... }:
+{ lib, pkgs, ... }:
 
 {
   nix.settings = {
@@ -21,6 +21,10 @@
   time.timeZone = lib.mkDefault "America/New_York";
   i18n.defaultLocale = "en_US.UTF-8";
   console.keyMap = "us";
+
+  # The newest kernel rather than the LTS default: new laptop hardware, and
+  # closer to what Fedora runs.
+  boot.kernelPackages = pkgs.linuxPackages_latest;
 
   networking.networkmanager.enable = true;
   zramSwap.enable = true;
