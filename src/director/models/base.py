@@ -12,6 +12,17 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 
+class ModelError(Exception):
+    """A backend failure worth showing the user as one plain sentence.
+
+    The request can be retried (network hiccup, rate limit, server error).
+    """
+
+
+class ModelSetupError(ModelError):
+    """The backend can't work until the user fixes something (key, model name)."""
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     name: str

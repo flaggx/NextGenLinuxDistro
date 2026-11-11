@@ -8,7 +8,7 @@ import sys
 
 from .agent import Director
 from .models import load_model
-from .models.base import ToolCall
+from .models.base import ModelError, ModelSetupError, ToolCall
 from .permissions import RunningAsRootError, ensure_not_root, make_terminal_approver
 from .tools import default_tools
 
@@ -33,15 +33,21 @@ def main(argv: list[str] | None = None) -> int:
             detail = call.input.get("command") or call.input.get("path") or call.input.get("pattern", "")
             print(f"  · {call.name} {detail}", file=sys.stderr)
 
-    director = Director(
-        model=load_model(args.backend, args.model),
-        tools=default_tools(),
-        approver=make_terminal_approver(),
-        on_tool=show_tool,
-    )
+    try:
+        director = Director(
+            model=load_model(args.backend, args.model),
+            tools=default_tools(),
+            approver=make_terminal_approver(),
+            on_tool=show_tool,
+        )
+    except ModelError as e:
+        return _fail(e)
 
     if args.prompt:
-        print(director.ask(" ".join(args.prompt)))
+        try:
+            print(director.ask(" ".join(args.prompt)))
+        except ModelError as e:
+            return _fail(e)
         return 0
 
     print("Director ready. Ctrl-D to leave.")
@@ -51,8 +57,20 @@ def main(argv: list[str] | None = None) -> int:
         except (EOFError, KeyboardInterrupt):
             print()
             return 0
-        if text:
+        if not text:
+            continue
+        try:
             print(director.ask(text))
+        except ModelSetupError as e:
+            return _fail(e)
+        except ModelError as e:
+            # Transient (network, rate limit): keep the conversation open.
+            print(f"director: {e}", file=sys.stderr)
+
+
+def _fail(error: ModelError) -> int:
+    print(f"director: {error}", file=sys.stderr)
+    return 1
 
 
 if __name__ == "__main__":

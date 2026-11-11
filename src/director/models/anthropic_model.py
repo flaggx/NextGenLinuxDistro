@@ -6,9 +6,27 @@ from typing import Any
 
 import anthropic
 
-from .base import ToolCall, ToolResult, ToolSpec, Turn
+from .base import ModelError, ModelSetupError, ToolCall, ToolResult, ToolSpec, Turn
 
 DEFAULT_MODEL = "claude-opus-5-5"
+
+NO_CREDENTIALS = (
+    "No Anthropic credentials found. Set ANTHROPIC_API_KEY "
+    "(from console.anthropic.com) or run `ant auth login`."
+)
+NO_CREDITS = (
+    "Your Anthropic API account has no credits. Add some under Billing at "
+    "console.anthropic.com (API usage is billed separately from a Claude.ai subscription)."
+)
+
+
+def _is_billing_error(e: anthropic.APIStatusError) -> bool:
+    # 402 billing_error; older accounts may still see a 400 that names the balance.
+    return (
+        e.status_code == 402
+        or getattr(e, "type", None) == "billing_error"
+        or "credit balance" in (e.message or "").lower()
+    )
 # Server-side refusal fallback: the API re-runs a declined request on a
 # recommended model, routed by refusal category.
 _FALLBACK_BETA = "server-side-fallback-2026-07-01"
@@ -46,8 +64,12 @@ class AnthropicConversation:
             for t in tools
         ]
         self.messages: list[dict[str, Any]] = []
+        # Transcript length before the current request began; a failed
+        # request rolls back to here so the transcript stays valid to resend.
+        self._checkpoint = 0
 
     def send_user(self, text: str) -> Turn:
+        self._checkpoint = len(self.messages)
         self.messages.append({"role": "user", "content": text})
         return self._call()
 
@@ -70,8 +92,18 @@ class AnthropicConversation:
         return self._call()
 
     def _call(self) -> Turn:
-        while True:
-            response = self.model.client.beta.messages.create(
+        try:
+            return self._call_unchecked()
+        except ModelError:
+            # Drop the whole failed request, including any tool round trips
+            # already made for it: a dangling tool_use with no result would
+            # make every later request fail.
+            del self.messages[self._checkpoint :]
+            raise
+
+    def _create(self) -> Any:
+        try:
+            return self.model.client.beta.messages.create(
                 model=self.model.name,
                 max_tokens=self.model.max_tokens,
                 system=self.system,
@@ -82,6 +114,38 @@ class AnthropicConversation:
                 betas=[_FALLBACK_BETA],
                 fallbacks="default",
             )
+        except TypeError as e:
+            # The SDK raises a bare TypeError when it finds no key, token or profile.
+            if "authentication" in str(e):
+                raise ModelSetupError(NO_CREDENTIALS) from None
+            raise
+        except anthropic.CredentialsError as e:
+            raise ModelSetupError(f"Your Anthropic login profile couldn't be used: {e}") from None
+        except anthropic.AuthenticationError:
+            raise ModelSetupError(
+                "Anthropic rejected your credentials. Check ANTHROPIC_API_KEY "
+                "or run `ant auth login` again."
+            ) from None
+        except anthropic.PermissionDeniedError as e:
+            raise ModelSetupError(f"Your Anthropic account can't make this request: {e.message}") from None
+        except anthropic.NotFoundError:
+            raise ModelSetupError(
+                f"Model {self.model.name!r} wasn't found. Check --model or DIRECTOR_MODEL."
+            ) from None
+        except anthropic.APIConnectionError:
+            raise ModelError(
+                "Couldn't reach the Anthropic API. Check your internet connection and try again."
+            ) from None
+        except anthropic.RateLimitError:
+            raise ModelError("Anthropic is rate-limiting requests. Wait a moment and try again.") from None
+        except anthropic.APIStatusError as e:
+            if _is_billing_error(e):
+                raise ModelSetupError(NO_CREDITS) from None
+            raise ModelError(f"The Anthropic API returned an error ({e.status_code}): {e.message}") from None
+
+    def _call_unchecked(self) -> Turn:
+        while True:
+            response = self._create()
             # Append the full content (thinking blocks included), never just text.
             self.messages.append({"role": "assistant", "content": response.content})
             if response.stop_reason == "pause_turn":

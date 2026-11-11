@@ -1,4 +1,13 @@
-from .base import Conversation, Model, ToolCall, ToolResult, ToolSpec, Turn
+from .base import (
+    Conversation,
+    Model,
+    ModelError,
+    ModelSetupError,
+    ToolCall,
+    ToolResult,
+    ToolSpec,
+    Turn,
+)
 
 
 def load_model(backend: str, model: str | None = None, **kwargs) -> Model:
@@ -14,4 +23,14 @@ def load_model(backend: str, model: str | None = None, **kwargs) -> Model:
     raise ValueError(f"unknown model backend: {backend!r}")
 
 
-__all__ = ["Conversation", "Model", "ToolCall", "ToolResult", "ToolSpec", "Turn", "load_model"]
+__all__ = [
+    "Conversation",
+    "Model",
+    "ModelError",
+    "ModelSetupError",
+    "ToolCall",
+    "ToolResult",
+    "ToolSpec",
+    "Turn",
+    "load_model",
+]

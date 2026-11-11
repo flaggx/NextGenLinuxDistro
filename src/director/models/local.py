@@ -6,7 +6,7 @@ implementing the same Model/Conversation protocol as AnthropicModel.
 
 from __future__ import annotations
 
-from .base import ToolSpec
+from .base import ModelSetupError, ToolSpec
 
 
 class LocalModel:
@@ -15,6 +15,6 @@ class LocalModel:
         self.endpoint = endpoint
 
     def start(self, system: str, tools: list[ToolSpec]):
-        raise NotImplementedError(
-            "Local model backend is not implemented yet; use DIRECTOR_BACKEND=anthropic."
+        raise ModelSetupError(
+            "The local model backend isn't built yet. Use --backend anthropic for now."
         )
