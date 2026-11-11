@@ -73,7 +73,8 @@ def test_tool_round_trip(ollama, tmp_path):
     assert director.ask("what's in my note?") == "Your note says: buy milk."
 
     first, second = ollama.requests
-    assert first["model"] == "qwen3:8b" and first["stream"] is False
+    assert first["model"] == "lfm3:1.7b" and first["stream"] is False
+    assert "keep_alive" not in first
     assert first["options"]["num_ctx"] == 16384
     assert first["tools"][0]["function"]["name"] == "read_file"
     assert first["messages"][0]["role"] == "system"
@@ -121,8 +122,8 @@ def test_cut_off_reply_reports_max_tokens(ollama):
 
 
 def test_missing_model_says_how_to_pull(ollama):
-    ollama.error(404, "model 'qwen3:8b' not found")
-    with pytest.raises(ModelSetupError, match="ollama pull qwen3:8b"):
+    ollama.error(404, "model 'lfm3:1.7b' not found")
+    with pytest.raises(ModelSetupError, match="ollama pull lfm3:1.7b"):
         LocalModel(endpoint=ollama.url).start("s", []).send_user("hi")
 
 

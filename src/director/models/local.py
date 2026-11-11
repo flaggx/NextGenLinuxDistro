@@ -18,8 +18,9 @@ from uuid import uuid4
 
 from .base import ModelError, ModelSetupError, ToolCall, ToolResult, ToolSpec, Turn
 
-# Tool-capable, and fits fully in 8 GB of video memory at Ollama's default quantization.
-DEFAULT_MODEL = "qwen3:8b"
+# Best of the benchmarked models at director tasks (bench/, 97/99), and small
+# enough (1.3 GB) to stay loaded all the time.
+DEFAULT_MODEL = "lfm3:1.7b"
 DEFAULT_ENDPOINT = "http://127.0.0.1:11434"
 # CPU-only machines can take minutes for one long reply.
 TIMEOUT_SECONDS = 600
@@ -44,12 +45,16 @@ class LocalModel:
         endpoint: str | None = None,
         num_ctx: int = 16384,
         timeout: float = TIMEOUT_SECONDS,
+        keep_alive: str | int | None = None,
     ) -> None:
         self.name = model
         self.endpoint = endpoint or endpoint_from_env()
         # Ollama's default context is small; tool output fills it quickly.
         self.num_ctx = num_ctx
         self.timeout = timeout
+        # How long Ollama keeps the model loaded after a request: -1 forever,
+        # "5m", 0 to unload right away. None leaves Ollama's default (5 minutes).
+        self.keep_alive = keep_alive
 
     def start(self, system: str, tools: list[ToolSpec]) -> "LocalConversation":
         return LocalConversation(self, system, tools)
@@ -134,17 +139,17 @@ class LocalConversation:
         return self._call()
 
     def _call(self) -> Turn:
+        body: dict[str, Any] = {
+            "model": self.model.name,
+            "messages": self.messages,
+            "tools": self.tools,
+            "stream": False,
+            "options": {"num_ctx": self.model.num_ctx},
+        }
+        if self.model.keep_alive is not None:
+            body["keep_alive"] = self.model.keep_alive
         try:
-            reply = self.model.post(
-                "/api/chat",
-                {
-                    "model": self.model.name,
-                    "messages": self.messages,
-                    "tools": self.tools,
-                    "stream": False,
-                    "options": {"num_ctx": self.model.num_ctx},
-                },
-            )
+            reply = self.model.post("/api/chat", body)
         except ModelError:
             del self.messages[self._checkpoint :]
             raise

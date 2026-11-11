@@ -39,20 +39,29 @@ With Nix: `nix develop`, then `python -m director`.
 ### Free, on your own machine (Ollama)
 
 The local backend runs an open-weight model with [Ollama](https://ollama.com):
-no API costs, and nothing leaves the computer. A GPU with 8 GB of video memory
-runs the default model (`qwen3:8b`) comfortably; CPU-only works but is slow.
+no API costs, and nothing leaves the computer. The default model
+(`lfm3:1.7b`, 1.3 GB) did best on the benchmark below and runs fast even on
+modest GPUs; CPU-only works but is slower.
 
 ```bash
-ollama pull qwen3:8b                 # one-time download, about 5 GB
+ollama pull lfm3:1.7b                # one-time download, about 1 GB
 director --backend local             # or: export DIRECTOR_BACKEND=local
 ```
+
+**Two tiers.** `--worker MODEL` adds a larger model that is loaded only when
+needed: the small model stays loaded and answers lookups; anything that needs
+your approval, or that it asks for help with, goes to the worker. The worker
+unloads after `--worker-idle` (default 5 minutes), straight away when the laptop
+goes on battery or memory runs low, and isn't loaded at all when it wouldn't fit;
+the small model then carries on and says so.
 
 `--model` picks another tool-capable model; `OLLAMA_HOST` points at Ollama on
 another machine. Local models are less reliable at tool use than Claude, so the
 director validates every tool call and rejects malformed ones before anything runs.
 
 Configuration: `--backend` / `DIRECTOR_BACKEND` (`anthropic` or `local`),
-`--model` / `DIRECTOR_MODEL` (default `claude-opus-5-5`, or `qwen3:8b` for local).
+`--model` / `DIRECTOR_MODEL` (default `claude-opus-5-5`, or `lfm3:1.7b` for local),
+`--worker` / `DIRECTOR_WORKER`, `--worker-idle` / `DIRECTOR_WORKER_IDLE`.
 
 ### Choosing a local model
 

@@ -23,6 +23,7 @@ from typing import Any
 from director.agent import Director
 from director.models.base import ModelError
 from director.models.local import LocalModel, endpoint_from_env
+from director.system import on_battery
 
 from . import fixtures
 from .sandbox import sandboxed_tools
@@ -65,16 +66,6 @@ def busy_reasons() -> list[str]:
     if on_battery():
         reasons.append("the laptop is on battery (GPU and CPU run power-limited)")
     return reasons
-
-
-def on_battery() -> bool:
-    supplies = list(Path("/sys/class/power_supply").glob("*"))
-    if not any((s / "type").read_text().strip() == "Battery" for s in supplies):
-        return False  # a desktop
-    return not any(
-        (s / "type").read_text().strip() in ("Mains", "USB") and (s / "online").read_text().strip() == "1"
-        for s in supplies if (s / "online").exists()
-    )
 
 
 class PowerProblem(Exception):
