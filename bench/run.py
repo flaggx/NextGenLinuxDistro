@@ -54,7 +54,8 @@ def unload_all() -> None:
 
 
 def run_task(model_name: str, task: Task, workdir: Path, num_ctx: int, think: bool | None) -> dict[str, Any]:
-    home = fixtures.build_home(workdir / task.name / "home")
+    # Numbered, not named: a task name in the path leaks hints (or red herrings) to the model.
+    home = fixtures.build_home(workdir / str(TASKS.index(task)) / "home")
     model = MeteredModel(model_name, num_ctx, think)
     record = Record()
 
