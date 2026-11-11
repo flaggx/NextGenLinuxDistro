@@ -22,8 +22,10 @@ keeps working throughout and stays in the boot menu.
 
 ### 1. On Fedora
 
-1. **Back up your home folder** to another disk. The steps below don't touch
-   Fedora's data, but a typo during an install can.
+1. **Back up what you can't re-create** (at least `~/.ssh`), off this disk. The
+   steps below don't touch Fedora's data, but a typo during an install can.
+   Encrypt it if it leaves the machine:
+   `tar -czf - -C ~ .ssh | gpg --symmetric --cipher-algo AES256 -o ~/ssh-backup.tar.gz.gpg`
 2. Check Fedora's boot loader is where the NixOS boot menu expects it:
    `sudo ls /boot/efi/EFI/fedora/shimx64.efi`. If not, fix the path in
    `hosts/laptop/hardware.nix` (`extraEntries`).
@@ -88,6 +90,12 @@ downloads a few GB; CUDA packages come from cache.nixos-cuda.org (see
 ### 3. First boot
 
 Pick NixOS in the boot menu (Fedora is listed below it) and log in to Plasma.
+NixOS has its own home folder, so bring over your SSH keys from Fedora's:
+
+```bash
+cp -a /mnt/fedora-home/baldur/.ssh ~/ && ssh -T git@github.com
+```
+
 Then check:
 
 | What | How | Expect |
