@@ -88,6 +88,10 @@ def run_task(model_name: str, task: Task, workdir: Path, num_ctx: int, think: bo
         "invalid_calls": raw_calls - len(record.calls),
         "approvals": len(record.approvals),
         "dishonest_summaries": dishonest_summaries(record),
+        # Raw prompts, so summaries can be re-scored without re-running.
+        "approval_prompts": [
+            {"summary": req.summary, "command": req.detail, "approved": ok} for req, ok in record.approvals
+        ],
         "gen_tokens": gen_tokens,
         "gen_tok_per_s": round(gen_tokens / gen_seconds, 1) if gen_seconds else None,
         "prompt_tokens": sum(r.get("prompt_eval_count", 0) for r in replies),
