@@ -61,7 +61,24 @@ def busy_reasons() -> list[str]:
             reasons.append(f"a VM is running ({comm}, pid {pid})")
         elif user.startswith("nixbld"):
             reasons.append(f"a Nix build is running ({comm}, pid {pid})")
-    return list(dict.fromkeys(reasons))[:5]
+    reasons = list(dict.fromkeys(reasons))[:5]
+    if on_battery():
+        reasons.append("the laptop is on battery (GPU and CPU run power-limited)")
+    return reasons
+
+
+def on_battery() -> bool:
+    supplies = list(Path("/sys/class/power_supply").glob("*"))
+    if not any((s / "type").read_text().strip() == "Battery" for s in supplies):
+        return False  # a desktop
+    return not any(
+        (s / "type").read_text().strip() in ("Mains", "USB") and (s / "online").read_text().strip() == "1"
+        for s in supplies if (s / "online").exists()
+    )
+
+
+class PowerProblem(Exception):
+    """The machine went on battery or to sleep mid-run: what follows would be skewed."""
 
 
 def unload_all() -> None:
@@ -81,12 +98,17 @@ def run_task(model_name: str, task: Task, workdir: Path, num_ctx: int, think: bo
 
     director = Director(model, sandboxed_tools(home), approver=approver, on_tool=record.calls.append)
     start = time.monotonic()
+    # CLOCK_BOOTTIME keeps counting during suspend; monotonic doesn't.
+    start_boot = time.clock_gettime(time.CLOCK_BOOTTIME)
     error = None
     try:
         record.answer = director.ask(task.prompt)
     except ModelError as e:
         error = f"model error: {e}"
     seconds = time.monotonic() - start
+    slept = time.clock_gettime(time.CLOCK_BOOTTIME) - start_boot - seconds
+    if slept > 5:
+        raise PowerProblem(f"the machine slept for {slept:.0f}s during {task.name}")
 
     replies = model.replies
     raw_calls = sum(len((r.get("message") or {}).get("tool_calls") or []) for r in replies)
@@ -125,6 +147,8 @@ def run_model(
     memory: dict[str, Any] = {}
     for rep in range(repeat):
         for task in tasks:
+            if on_battery():
+                raise PowerProblem(f"the laptop went on battery before {task.name}")
             result = run_task(name, task, workdir / str(rep), num_ctx, think)
             results.append(result)
             mark = "ok  " if result["failure"] is None else "FAIL"
@@ -177,12 +201,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--num-ctx", type=int, default=16384)
     parser.add_argument("--think", choices=["default", "on", "off"], default="default")
     parser.add_argument("--repeat", type=int, default=1, help="runs per task; small models vary")
-    parser.add_argument("--allow-busy", action="store_true", help="run even if a VM or Nix build is running")
+    parser.add_argument("--allow-busy", action="store_true", help="run even if a VM or Nix build is running, or on battery")
     args = parser.parse_args(argv)
 
     if (busy := busy_reasons()) and not args.allow_busy:
         print("Not benchmarking: results would be skewed because", "; ".join(busy) + ".", file=sys.stderr)
-        print("Stop it first, or pass --allow-busy.", file=sys.stderr)
+        print("Deal with that first, or pass --allow-busy.", file=sys.stderr)
         return 1
 
     tasks = TASKS if not args.tasks else [t for t in TASKS if t.name in args.tasks.split(",")]
@@ -192,7 +216,13 @@ def main(argv: list[str] | None = None) -> int:
 
     for name in args.models:
         print(f"\n== {name}", flush=True)
-        runs.append(run_model(name, tasks, workdir / str(len(runs)), args.num_ctx, think, args.repeat))
+        try:
+            runs.append(run_model(name, tasks, workdir / str(len(runs)), args.num_ctx, think, args.repeat))
+        except PowerProblem as e:
+            # Models finished before this are already saved; this one's partial results are dropped.
+            print(f"\nStopped: {e}. {name} and any models after it need a rerun.", file=sys.stderr)
+            unload_all()
+            return 1
         args.out.write_text(json.dumps(runs, indent=1))
 
     print("\n" + markdown_table([summarize(r) for r in runs]))
