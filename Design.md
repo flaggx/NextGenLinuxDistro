@@ -21,7 +21,7 @@ Non-technical users get a conversation. Technical users can always drop backstag
 - **Base:** NixOS on the Linux kernel. The whole system is declared in text config, which agents edit well, and every change creates a generation that can be rolled back.
 - **Stage:** a tiling Wayland compositor (e.g. Sway or Hyprland), controlled programmatically over IPC so the agent can open, place and close panes.
 - **Props:** existing viewers and editors wrapped as tools: a text viewer, an image viewer, a code editor (Monaco, the editor component from VS Code), media player, tables, forms.
-- **Director:** the orchestration layer. An agent loop with tools for the shell, files, the window manager and the props, plus a memory of recent activity to decide what to show and when.
+- **Director:** the orchestration layer, with its own harness rather than an agent framework: the permission model, the stage, the props and local-model handling are what make it different, and they are what a framework would replace. An agent loop with tools for the shell, files, the window manager and the props, plus a memory of recent activity to decide what to show and when.
 - **Model:** user's choice, either a local model or a plugged-in subscription.
 - **Backstage:** a shell is always available for manual control.
 
@@ -33,12 +33,14 @@ Non-technical users get a conversation. Technical users can always drop backstag
 - Everyday actions (opening files, arranging windows) need no approval. System changes and anything irreversible (deleting, sending data out) do.
 - Nix rollback is the safety net.
 - Treat prompt injection from web pages and files as a core threat.
+- No inbound remote channels: the director takes requests only from the person at the machine, never from messaging apps or network listeners, which would be ways in for attackers.
+- MCP servers are untrusted code: each runs sandboxed with only the access it needs, its tools go through the same permission tiers as built-in ones, and what it returns is data, not instructions.
 
 ## Prototype roadmap
 
 1. **The brain:** a simple agent loop with a pluggable model (local or subscription) and basic tools like running commands and finding files.
 2. **The stage:** give it control of the compositor via IPC.
-3. **The props:** wrap a few existing viewers as callable tools, and define the contract for how the agent tells a prop what to do and hears back what the user did.
+3. **The props:** support MCP (Model Context Protocol) first, so tools and props speak the common standard: the director can use existing MCP servers, and its props can be used by other agents. Then wrap a few existing viewers as MCP servers, and define the contract for how the agent tells a prop what to do and hears back what the user did.
 4. **The director's memory:** track recent activity and use it to decide pacing and presentation.
 5. **The distro:** package everything as a NixOS-based image with its own name and branding.
 
