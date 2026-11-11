@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import statistics
+import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
@@ -46,6 +49,19 @@ def ollama(path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
     data = json.dumps(body).encode() if body is not None else None
     with urllib.request.urlopen(urllib.request.Request(endpoint_from_env() + path, data=data), timeout=120) as r:
         return json.loads(r.read())
+
+
+def busy_reasons() -> list[str]:
+    """Other heavy work on the machine (VMs, Nix builds) that would skew speed and memory results."""
+    ps = subprocess.run(["ps", "-eo", "user=,pid=,comm="], capture_output=True, text=True).stdout
+    reasons = []
+    for line in ps.splitlines():
+        user, pid, comm = line.split(None, 2)
+        if comm.startswith("qemu"):
+            reasons.append(f"a VM is running ({comm}, pid {pid})")
+        elif user.startswith("nixbld"):
+            reasons.append(f"a Nix build is running ({comm}, pid {pid})")
+    return list(dict.fromkeys(reasons))[:5]
 
 
 def unload_all() -> None:
@@ -104,6 +120,7 @@ def run_model(
     name: str, tasks: list[Task], workdir: Path, num_ctx: int, think: bool | None, repeat: int
 ) -> dict[str, Any]:
     unload_all()
+    load_at_start = os.getloadavg()[0]
     results = []
     memory: dict[str, Any] = {}
     for rep in range(repeat):
@@ -118,6 +135,7 @@ def run_model(
                     memory = {"size_gb": round(loaded["size"] / 1e9, 1),
                               "gpu_fraction": round(loaded["size_vram"] / loaded["size"], 2)}
     return {"model": name, "think": think, "num_ctx": num_ctx, "repeat": repeat, **memory,
+            "load_avg_at_start": round(load_at_start, 2),
             "cold_load_seconds": results[0]["load_seconds"] if results else None, "results": results}
 
 
@@ -159,7 +177,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--num-ctx", type=int, default=16384)
     parser.add_argument("--think", choices=["default", "on", "off"], default="default")
     parser.add_argument("--repeat", type=int, default=1, help="runs per task; small models vary")
+    parser.add_argument("--allow-busy", action="store_true", help="run even if a VM or Nix build is running")
     args = parser.parse_args(argv)
+
+    if (busy := busy_reasons()) and not args.allow_busy:
+        print("Not benchmarking: results would be skewed because", "; ".join(busy) + ".", file=sys.stderr)
+        print("Stop it first, or pass --allow-busy.", file=sys.stderr)
+        return 1
 
     tasks = TASKS if not args.tasks else [t for t in TASKS if t.name in args.tasks.split(",")]
     think = {"default": None, "on": True, "off": False}[args.think]
