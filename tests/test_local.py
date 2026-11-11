@@ -40,10 +40,12 @@ class FakeOllama:
         self.url = f"http://127.0.0.1:{self.server.server_port}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
-    def reply(self, content="", tool_calls=None, done_reason="stop", status=200):
+    def reply(self, content="", tool_calls=None, done_reason="stop", status=200, thinking=None):
         message = {"role": "assistant", "content": content}
         if tool_calls:
             message["tool_calls"] = tool_calls
+        if thinking is not None:
+            message["thinking"] = thinking
         self.replies.append((status, {"message": message, "done_reason": done_reason}))
 
     def error(self, status, text):
@@ -78,6 +80,23 @@ def test_tool_round_trip(ollama, tmp_path):
     tool_msg = second["messages"][-1]
     assert tool_msg == {"role": "tool", "tool_name": "read_file", "content": "buy milk"}
     assert second["messages"][-2]["tool_calls"][0]["function"]["name"] == "read_file"
+
+
+def test_answer_left_in_thinking_is_used(ollama, tmp_path):
+    note = tmp_path / "todo.txt"
+    note.write_text("1. Renew passport")
+    ollama.reply(tool_calls=[call("read_file", {"path": str(note)})], thinking="Let me read the file.")
+    ollama.reply(content="", thinking='The first item is "Renew passport".')
+
+    director = Director(LocalModel(endpoint=ollama.url), [ReadFile()])
+    assert director.ask("first todo?") == 'The first item is "Renew passport".'
+    # Reasoning next to a real reply or a tool call stays private.
+    assert ollama.requests[1]["messages"][-2]["content"] == ""
+
+
+def test_thinking_stays_private_when_there_is_an_answer(ollama):
+    ollama.reply(content="Hello.", thinking="The user greeted me.")
+    assert Director(LocalModel(endpoint=ollama.url), []).ask("hi") == "Hello."
 
 
 def test_string_arguments_are_parsed(ollama):

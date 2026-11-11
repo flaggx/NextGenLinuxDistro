@@ -152,6 +152,10 @@ class LocalConversation:
         message = reply.get("message") or {}
         text = message.get("content") or ""
         raw_calls = message.get("tool_calls") or []
+        if not text.strip() and not raw_calls:
+            # Some thinking models (qwen3.5) put the final answer in the
+            # reasoning channel and leave the reply empty. It's all there is.
+            text = (message.get("thinking") or "").strip()
         # Replay the assistant turn as sent, minus private reasoning.
         self.messages.append({"role": "assistant", "content": text, "tool_calls": raw_calls})
 
