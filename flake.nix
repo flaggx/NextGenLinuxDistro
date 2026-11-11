@@ -13,6 +13,7 @@
           packages = [
             (pkgs.python3.withPackages (ps: [ ps.anthropic ps.pytest ]))
             pkgs.sway # stage (roadmap step 2): provides swaymsg for IPC
+            pkgs.ollama # free local model backend
           ];
           shellHook = ''export PYTHONPATH="$PWD/src:$PYTHONPATH"'';
         };

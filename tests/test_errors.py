@@ -78,9 +78,15 @@ def test_cli_prints_one_line_and_exits_1(monkeypatch, capsys):
     assert err == f"director: {NO_CREDITS}\n"
 
 
-def test_cli_local_backend_is_friendly(monkeypatch, capsys):
+def test_cli_local_backend_without_ollama_is_friendly(monkeypatch, capsys):
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    monkeypatch.setenv("OLLAMA_HOST", f"127.0.0.1:{port}")
     monkeypatch.setattr(cli, "ensure_not_root", lambda: None)
     assert cli.main(["--backend", "local", "hello"]) == 1
     err = capsys.readouterr().err
-    assert err.startswith("director: The local model backend isn't built yet")
+    assert err.startswith("director: Can't reach Ollama at")
     assert "Traceback" not in err

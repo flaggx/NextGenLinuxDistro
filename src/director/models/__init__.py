@@ -17,9 +17,9 @@ def load_model(backend: str, model: str | None = None, **kwargs) -> Model:
 
         return AnthropicModel(model or DEFAULT_MODEL, **kwargs)
     if backend == "local":
-        from .local import LocalModel
+        from .local import DEFAULT_MODEL as LOCAL_DEFAULT, LocalModel
 
-        return LocalModel(model or "llama3.1")
+        return LocalModel(model or LOCAL_DEFAULT, **kwargs)
     raise ValueError(f"unknown model backend: {backend!r}")
 
 

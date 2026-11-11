@@ -14,7 +14,7 @@ interfaces only.
 | Path | Roadmap step | State |
 |---|---|---|
 | `src/director/agent.py` | 1. Brain: agent loop | working |
-| `src/director/models/` | 1. Pluggable model | Claude: working · local: stub |
+| `src/director/models/` | 1. Pluggable model | Claude: working · local (Ollama): working |
 | `src/director/tools/` | 1. Basic tools | `run_command`, `find_files`, `read_file` |
 | `src/director/permissions.py` | Permission model | approve-the-outcome prompts, no-root check |
 | `src/director/stage/` | 2. Compositor IPC | interface only |
@@ -36,8 +36,23 @@ director what is using my disk space   # one-shot
 
 With Nix: `nix develop`, then `python -m director`.
 
+### Free, on your own machine (Ollama)
+
+The local backend runs an open-weight model with [Ollama](https://ollama.com):
+no API costs, and nothing leaves the computer. A GPU with 8 GB of video memory
+runs the default model (`qwen3:8b`) comfortably; CPU-only works but is slow.
+
+```bash
+ollama pull qwen3:8b                 # one-time download, about 5 GB
+director --backend local             # or: export DIRECTOR_BACKEND=local
+```
+
+`--model` picks another tool-capable model; `OLLAMA_HOST` points at Ollama on
+another machine. Local models are less reliable at tool use than Claude, so the
+director validates every tool call and rejects malformed ones before anything runs.
+
 Configuration: `--backend` / `DIRECTOR_BACKEND` (`anthropic` or `local`),
-`--model` / `DIRECTOR_MODEL` (default `claude-opus-5-5`).
+`--model` / `DIRECTOR_MODEL` (default `claude-opus-5-5`, or `qwen3:8b` for local).
 
 ## Permissions in practice
 
