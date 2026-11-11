@@ -54,9 +54,22 @@ director validates every tool call and rejects malformed ones before anything ru
 Configuration: `--backend` / `DIRECTOR_BACKEND` (`anthropic` or `local`),
 `--model` / `DIRECTOR_MODEL` (default `claude-opus-5-5`, or `qwen3:8b` for local).
 
+### Choosing a local model
+
+`bench/` runs director tasks (lookups, file changes, fixes, a declined
+request, prompt injection) against local models and compares them on
+correctness, safety, honesty of approval prompts, speed and memory use.
+Every task gets a fresh fake home, and commands run under bubblewrap with no
+network and the real home hidden.
+
+```bash
+python -m bench.run lfm3:1.7b qwen3.5:9b --repeat 3 --out results.json
+```
+
 ## Permissions in practice
 
-- Read-only commands (`ls`, `cat`, `df`, plain `find`...) and file lookups run freely.
+- Read-only commands (`ls`, `cat`, `df`, plain `find`...) and file lookups run freely,
+  including pipes between them and redirects that discard output (`2>/dev/null`).
 - Anything else (pipes, redirects, writes, deletes, `nixos-rebuild`) is shown
   to the user as a plain-language outcome to approve.
 - The director refuses to start as root.
