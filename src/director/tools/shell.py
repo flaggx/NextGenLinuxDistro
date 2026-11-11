@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import subprocess
 from typing import Any
@@ -17,16 +18,36 @@ READ_ONLY_COMMANDS = {
 # find flags that delete, execute or write files.
 FIND_UNSAFE = {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"}
 # Anything that can chain, redirect or substitute makes a command non-trivial.
-SHELL_METACHARS = set(";&|<>`$(){}\n")
+# A plain pipe is checked separately: each stage must be read-only on its own.
+SHELL_METACHARS = set(";&<>`$(){}\n")
+# Redirects that write nowhere: discarding output (2>/dev/null, &>/dev/null) or
+# merging streams (2>&1). Each must stand alone as its own word (or end at a pipe).
+HARMLESS_REDIRECT = re.compile(r"(?<!\S)(?:(?:\d|&)?>>?\s*/dev/null|\d?>&\d)(?![^\s|])")
 
 
 def is_read_only(command: str) -> bool:
+    command = HARMLESS_REDIRECT.sub(" ", command)
     if any(c in SHELL_METACHARS for c in command):
         return False
     try:
-        words = shlex.split(command)
+        lexer = shlex.shlex(command, posix=True, punctuation_chars="|")
+        lexer.whitespace_split = True
+        words = list(lexer)
     except ValueError:
         return False
+    stages: list[list[str]] = [[]]
+    for word in words:
+        # A quoted "|" also lands here and gets treated as a pipe: the safe direction.
+        if word == "|":
+            stages.append([])
+        elif set(word) == {"|"}:  # ||, which chains rather than pipes
+            return False
+        else:
+            stages[-1].append(word)
+    return all(_read_only_stage(stage) for stage in stages)
+
+
+def _read_only_stage(words: list[str]) -> bool:
     if not words or words[0] not in READ_ONLY_COMMANDS:
         return False
     if words[0] == "find" and FIND_UNSAFE.intersection(words):
