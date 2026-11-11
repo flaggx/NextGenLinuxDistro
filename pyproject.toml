@@ -1,0 +1,26 @@
+[project]
+name = "director"
+version = "0.0.1"
+description = "The orchestration layer (the director) for an agent-oriented Linux desktop."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+director = "director.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/director"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
