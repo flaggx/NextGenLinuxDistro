@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Callable
+from uuid import uuid4
 
 from .memory import ActivityLog
 from .models.base import Model, ToolCall, ToolResult, Turn
@@ -88,10 +89,13 @@ class Director:
         self.on_tool = on_tool
         # Approved actions run between snapshots, so they can be undone (undo.py).
         self.snapshots = snapshots
+        self._request = ""
         self.conversation = model.start(system, [t.spec() for t in tools])
 
     def ask(self, text: str) -> str:
         """Handle one user request through to a final answer."""
+        # Its changes are grouped, so "undo that" undoes all of them.
+        self._request = uuid4().hex[:12]
         self.memory.record("user", text=text)
         turn = self.conversation.send_user(text)
         for _ in range(MAX_STEPS):
@@ -145,7 +149,7 @@ class Director:
                 return ToolResult(call.id, "The user declined this action.", is_error=True)
             if self.snapshots and tool.snapshot:
                 try:
-                    pre = self.snapshots.before(request.summary)
+                    pre = self.snapshots.before(request.summary, self._request)
                 except SnapshotError as e:
                     self.memory.record("snapshot_failed", tool=call.name, error=str(e))
 

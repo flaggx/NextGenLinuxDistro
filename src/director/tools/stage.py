@@ -188,6 +188,7 @@ class ShowTerminal(StageTool):
 
 def show_backstage(stage: Stage, backstage: Backstage, window: str | None = None) -> None:
     """Put the backstage terminal on screen, on `window`'s tab if given."""
+    backstage.ensure()  # set up by the director, not by the terminal attaching to it
     if window:
         backstage.select(window)
     stage.present(BACKSTAGE_APP_ID, backstage.attach_command())

@@ -51,6 +51,7 @@ class Backstage:
         self.socket = socket
         self.state = Path(tempfile.mkdtemp(prefix="director-backstage-"))
         self._count = 0
+        self._numbers: dict[str, int] = {}  # window id -> command number
 
     @staticmethod
     def available() -> bool:
@@ -67,10 +68,11 @@ class Backstage:
         return ["tmux", "-L", self.socket, "new-session", "-A", "-s", SESSION, "-c", self.home]
 
     def ensure(self) -> None:
+        """The session exists, set up for the director (also if something else started it,
+        like a terminal showing backstage before the director ran anything)."""
         if subprocess.run(["tmux", "-L", self.socket, "has-session", "-t", SESSION],
-                          capture_output=True).returncode == 0:
-            return
-        self._tmux("new-session", "-d", "-s", SESSION, "-c", self.home, "-x", "200", "-y", "50")
+                          capture_output=True).returncode != 0:
+            self._tmux("new-session", "-d", "-s", SESSION, "-c", self.home, "-x", "200", "-y", "50")
         self._tmux("set-option", "-t", SESSION, "history-limit", str(HISTORY_LINES))
         # Command windows stay open after they finish, so their output can be read and
         # seen (a default for every window: this tmux server is the director's alone)...
@@ -94,26 +96,33 @@ class Backstage:
             "-e", f"DIRECTOR_DONE=director-done-{n}",
             "bash", "-c", WRAPPER,
         ).strip()
+        self._numbers[window] = n
         self._prune()
         return window
 
     def wait(self, window: str, timeout: float) -> Finished | Running | None:
-        """Finished, or Running if still going after `timeout`; None if it vanished."""
-        n = self._number(window)
-        status_file = self.state / f"{n}.status"
+        """Finished, or Running if still going after `timeout`; None if it vanished
+        without recording how it ended."""
+        status_file = self.state / f"{self._numbers[window]}.status"
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if status_file.exists() and status_file.read_text().strip():
-                return Finished(self.output(window), int(status_file.read_text()))
+                return Finished(self._output_if_any(window), int(status_file.read_text()))
             if window not in self._windows():
                 return None
             pane = self._tmux("display-message", "-p", "-t", window, "#{pane_dead} #{pane_dead_status}",
                               check=False).split()
             if pane and pane[0] == "1" and not status_file.exists():
                 # The wrapper itself died (killed, say) before recording a status.
-                return Finished(self.output(window), int(pane[1]) if len(pane) > 1 else 1)
+                return Finished(self._output_if_any(window), int(pane[1]) if len(pane) > 1 else 1)
             time.sleep(0.1)
         return Running(window)
+
+    def _output_if_any(self, window: str) -> str:
+        try:
+            return self.output(window)
+        except RuntimeError:  # the window was closed: the status is still known
+            return "(the output is gone: its window was closed)"
 
     def output(self, window: str) -> str:
         lines = self._tmux("capture-pane", "-p", "-J", "-S", "-", "-E", "-", "-t", window).rstrip().splitlines()
@@ -130,7 +139,7 @@ class Backstage:
 
     def when_done(self, window: str, callback: Callable[[], None]) -> None:
         """Call `callback` (from another thread) once the command in `window` exits."""
-        channel = f"director-done-{self._number(window)}"
+        channel = f"director-done-{self._numbers[window]}"
 
         def wait() -> None:
             subprocess.run(["tmux", "-L", self.socket, "wait-for", channel], capture_output=True)
@@ -141,10 +150,6 @@ class Backstage:
     def _windows(self) -> list[str]:
         out = self._tmux("list-windows", "-t", SESSION, "-F", "#{window_id}", check=False)
         return out.split()
-
-    def _number(self, window: str) -> int:
-        name = self._tmux("display-message", "-p", "-t", window, "#{window_name}").strip()
-        return int(name.split(":", 1)[0])
 
     def _prune(self) -> None:
         out = self._tmux("list-windows", "-t", SESSION, "-F", "#{window_index} #{window_id} #{pane_dead}")

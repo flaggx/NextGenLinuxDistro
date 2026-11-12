@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -37,6 +38,15 @@ class Change:
     pre: int
     post: int
     description: str
+    request: str = ""  # changes made for the same user request share this
+
+
+def last_request(changes: list[Change]) -> list[Change]:
+    """The changes made for the most recent request: what "undo that" means."""
+    if not changes:
+        return []
+    request = changes[-1].request
+    return [c for c in changes if c.request == request] if request else changes[-1:]
 
 
 class Snapshots:
@@ -59,10 +69,11 @@ class Snapshots:
             return False
         return True
 
-    def before(self, description: str) -> int:
+    def before(self, description: str, request: str = "") -> int:
+        userdata = f"{TAG}=yes" + (f",request={request}" if request else "")
         return int(self._snapper(
             "create", "--type", "pre", "--print-number", "--cleanup-algorithm", "number",
-            "--description", description, "--userdata", f"{TAG}=yes",
+            "--description", description, "--userdata", userdata,
         ).strip())
 
     def after(self, pre: int) -> int:
@@ -80,14 +91,23 @@ class Snapshots:
         for r in rows:
             pre = pres.get(r["pre-number"])
             if r["type"] == "post" and pre and "undone=yes" not in pre["userdata"]:
-                found.append(Change(int(pre["number"]), int(r["number"]), pre["description"]))
+                request = re.search(r"request=([\w-]+)", pre["userdata"])
+                found.append(Change(int(pre["number"]), int(r["number"]), pre["description"],
+                                    request.group(1) if request else ""))
         return found
 
-    def changed_files(self, change: Change) -> list[str]:
-        out = self._snapper("status", f"{change.pre}..{change.post}")
+    @staticmethod
+    def _span(changes: list[Change]) -> str:
+        # From before the first change to after the last: everything they did,
+        # and nothing the user did before or after them.
+        return f"{changes[0].pre}..{changes[-1].post}"
+
+    def changed_files(self, changes: list[Change]) -> list[str]:
+        out = self._snapper("status", self._span(changes))
         # Lines look like "c..... /home/me/file": a status code, then the path.
         return [line.split(None, 1)[1] for line in out.splitlines() if " " in line.strip()]
 
-    def undo(self, change: Change) -> None:
-        self._snapper("undochange", f"{change.pre}..{change.post}")
-        self._snapper("modify", "--userdata", f"{TAG}=yes,undone=yes", str(change.pre))
+    def undo(self, changes: list[Change]) -> None:
+        self._snapper("undochange", self._span(changes))
+        for change in changes:
+            self._snapper("modify", "--userdata", f"{TAG}=yes,undone=yes", str(change.pre))

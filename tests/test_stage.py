@@ -125,6 +125,9 @@ class FakeBackstage:
     def select(self, window):
         self.selected.append(window)
 
+    def ensure(self):
+        pass
+
 
 def test_present_opens_or_focuses_by_app():
     sway = FakeSway()

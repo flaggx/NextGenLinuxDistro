@@ -105,3 +105,17 @@ def test_old_finished_windows_are_cleared(backstage):
     names = subprocess.run(["tmux", "-L", backstage.socket, "list-windows", "-t", "backstage", "-F", "#{window_index}"],
                            capture_output=True, text=True).stdout.split()
     assert len(names) == 21  # the user's shell plus the last 20 commands
+
+
+def test_works_when_something_else_started_the_session(backstage):
+    # A terminal showing backstage (Super+Enter, show_terminal) can create the session
+    # before the director runs anything, without the director's settings.
+    subprocess.run(["tmux", "-L", backstage.socket, "new-session", "-d", "-s", "backstage"], check=True)
+    assert run(backstage, "echo still read") == "still read\n[exit 0]"
+
+
+def test_status_survives_a_closed_window(backstage):
+    window = backstage.start("echo hi", interactive=False)
+    backstage.wait(window, 5)
+    backstage.stop(window)
+    assert backstage.wait(window, 1) is not None  # the recorded status, not "vanished"

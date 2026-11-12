@@ -129,8 +129,9 @@ in
     # The polkit agent (soteria) runs as a user service and needs the login
     # session's id, which NixOS's sway setup doesn't hand to systemd. Without
     # this it crash-loops and password prompts never appear.
+    # (Not fatal: Sway must still start without a user service manager.)
     extraSessionCommands = ''
-      systemctl --user import-environment XDG_SESSION_ID XDG_SESSION_TYPE
+      systemctl --user import-environment XDG_SESSION_ID XDG_SESSION_TYPE || true
     '';
     # Only what the config above uses; the module's defaults include a menu and bar.
     extraPackages = with pkgs; [

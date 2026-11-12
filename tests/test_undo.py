@@ -85,7 +85,7 @@ def test_undo_reverts_the_last_change_and_lists_files():
     request = tool.approval_request({})
     assert request.summary == 'undo "add buy milk", putting 2 file(s) back as they were'
     assert "/home/me/todo.txt" in request.detail
-    assert tool.run({}) == "Undone: add buy milk"
+    assert tool.run({}) == 'Undone: "add buy milk"'
     assert snapper.undone == ["3..4"]
     # The undone change is gone from the list; the one before is next.
     assert [c.description for c in snaps.changes()] == ["rename report"]
@@ -119,3 +119,31 @@ def test_snapshots_unavailable_without_snapper():
         assert "snapperd unavailable" in str(e)
     else:
         raise AssertionError("expected SnapshotError")
+
+
+def test_undo_covers_every_change_of_the_last_request(tmp_path):
+    snapper = FakeSnapper()
+    snaps = Snapshots(run=snapper)
+    model = ScriptedModel([
+        run_cmd("touch a", "create a"), run_cmd("touch b", "create b"), Turn(text="made both"),
+        Turn(tool_calls=[ToolCall("1", "undo_last_change", {})]), Turn(text="undone"),
+    ])
+    asked = []
+    d = Director(model, [RunCommand(cwd=str(tmp_path)), UndoLastChange(snaps)],
+                 approver=lambda r: asked.append(r) or True, snapshots=snaps)
+    d.ask("make a and b")
+    d.ask("undo that")
+    assert snapper.undone == ["1..4"]  # before the first change to after the last
+    assert 'undo "create a" and 1 more change(s) from the same request' in asked[-1].summary
+    assert snaps.changes() == []
+
+
+def test_an_earlier_request_stays_when_the_last_is_undone():
+    snapper = FakeSnapper()
+    snaps = Snapshots(run=snapper)
+    snaps.after(snaps.before("earlier", "req1"))
+    snaps.after(snaps.before("later one", "req2"))
+    snaps.after(snaps.before("later two", "req2"))
+    UndoLastChange(snaps).run({})
+    assert snapper.undone == ["3..6"]
+    assert [c.description for c in snaps.changes()] == ["earlier"]

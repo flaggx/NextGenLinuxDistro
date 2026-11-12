@@ -23,16 +23,29 @@ let
     s.after(pre)
     todo.write_text(todo.read_text() + "edited by the user afterwards\n")
 
-    change = s.changes()[-1]
-    assert change.description == "rewrite the todo list", change
-    files = s.changed_files(change)
+    from director.undo import last_request
+    changes = last_request(s.changes())
+    assert [c.description for c in changes] == ["rewrite the todo list"], changes
+    files = s.changed_files(changes)
     assert str(todo) in files and str(new) in files, files
-    s.undo(change)
+    s.undo(changes)
 
     assert todo.read_text() == "1. Renew passport\n", todo.read_text()
     assert not new.exists()
     assert s.changes() == [], "undone change still listed"
     print("undo ok")
+
+    # Two changes for one request are undone together.
+    (home / "a").write_text("a")
+    for step in ("first", "second"):
+        pre = s.before(f"{step} change", "request-1")
+        (home / "a").write_text((home / "a").read_text() + step)
+        s.after(pre)
+    group = last_request(s.changes())
+    assert [c.description for c in group] == ["first change", "second change"], group
+    s.undo(group)
+    assert (home / "a").read_text() == "a", (home / "a").read_text()
+    print("grouped undo ok")
 
     from director.system import os_context
     assert "nix profile install" in os_context(), "director doesn't see NixOS"
