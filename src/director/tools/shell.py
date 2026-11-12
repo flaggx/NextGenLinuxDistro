@@ -38,19 +38,23 @@ def _sort_unsafe(args: list[str]) -> bool:
 # A plain pipe is checked separately: each stage must be read-only on its own.
 SHELL_METACHARS = set(";&<>`$(){}\n")
 # Installing from PyPI as a command (at the start, after ; & | ( `, after a
-# wrapper like sudo/env, or inside bash -c '...'):
-# pip/pip3/pip3.12, python -m pip, pipx, uv pip / uv tool. Mentioning it in a
-# search (`grep "pip install" README`) isn't a command and stays allowed. This
-# catches a model's mistakes, not a determined attacker.
-_AT_COMMAND = r"(?:^|[;&|(`]\s*|\b(?:sudo|env|exec|command|nohup)\s+(?:-\S+\s+)*|\s-c\s+['\"]\s*)(?:\S*/)?"
+# wrapper like sudo/env, or after -c/--command as in bash -c '...' and
+# nix shell ... -c pip install): pip/pip3/pip3.12, python -m pip, pipx,
+# uv pip / uv tool; also pip run straight from Nix (nix run|shell ...#...pip...
+# install). Mentioning it in a search (`grep "pip install" README`) isn't a
+# command and stays allowed. This catches a model's mistakes, not a
+# determined attacker.
+_AT_COMMAND = (r"(?:^|[;&|(`]\s*|\b(?:sudo|env|exec|command|nohup)\s+(?:-\S+\s+)*"
+               r"|\s(?:-c|--command)\s+['\"]?\s*)(?:\S*/)?")
 PIP_INSTALL = re.compile(
     _AT_COMMAND + r"(?:pip[\d.]*\s+install|pipx\s+install|python[\d.]*\s+-m\s+pip\s+install"
     r"|uv\s+(?:pip|tool)\s+install)\b"
+    r"|\bnix\s+(?:run|shell)\b[^;&|]*#\S*pip\S*[^;&|]*\binstall\b"
 )
 PIP_REFUSAL = (
     "pip installs are blocked: packages from PyPI run their authors' code, and a guessed "
     "name can be someone else's (malicious) package. Install programs with Nix instead: "
-    "`nix profile install nixpkgs#NAME`, or run one once with `nix shell nixpkgs#NAME -c NAME`."
+    "`nix profile add nixpkgs#NAME`, or run one once with `nix shell nixpkgs#NAME -c NAME`."
 )
 # Redirects that write nowhere: discarding output (2>/dev/null, &>/dev/null) or
 # merging streams (2>&1). Each must stand alone as its own word (or end at a pipe).

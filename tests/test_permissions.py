@@ -81,6 +81,10 @@ def test_needs_approval(cmd):
     "env pip install x",
     "bash -c 'pip install x'",
     'sh -c "cd /tmp; pip install x"',
+    "nix shell nixpkgs#pip -c pip install requests",
+    "nix shell nixpkgs#python3Packages.pip --command pip install requests",
+    "nix run nixpkgs#python3Packages.pip -- install requests",
+    "nix shell nixpkgs#pip install requests",
 ])
 def test_pip_installs_are_refused_before_approval(cmd):
     assert RunCommand().refusal({"command": cmd, "purpose": "install"}) == PIP_REFUSAL
@@ -89,6 +93,9 @@ def test_pip_installs_are_refused_before_approval(cmd):
 @pytest.mark.parametrize("cmd", [
     "pip list", "pip show requests", "grep 'pip install' README.md", "nix profile install nixpkgs#fastfetch",
     "echo pipinstall",
+    "nix shell nixpkgs#fastfetch -c fastfetch",
+    "nix profile add nixpkgs#python313Packages.requests",
+    "nix search nixpkgs pip",
 ])
 def test_other_pip_use_and_mentions_are_allowed(cmd):
     assert RunCommand().refusal({"command": cmd, "purpose": "x"}) is None

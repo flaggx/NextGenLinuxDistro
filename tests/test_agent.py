@@ -98,7 +98,7 @@ def test_refused_calls_never_reach_the_user(tmp_path):
     d = Director(model, [RunCommand(cwd=str(tmp_path))], approver=lambda r: asked.append(r) or True)
     d.ask("install fastfetch")
     assert asked == []
-    assert "nix profile install" in model.results[0][0].content
+    assert "nix profile add" in model.results[0][0].content
     assert d.memory.recent(kind="refused")
 
 

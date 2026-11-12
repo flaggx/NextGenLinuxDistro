@@ -13,7 +13,7 @@ NIXOS_CONTEXT = """
 This computer runs NixOS. There is no apt, dnf, pacman or snap, and pip \
 installs are blocked: never use them. Only when the user wants software \
 installed or run: install a program for them (no root needed) with \
-`nix profile install nixpkgs#NAME`; `nix profile remove NAME` \
+`nix profile add nixpkgs#NAME`; `nix profile remove NAME` \
 undoes it. To run a program once without installing it: \
 `nix shell nixpkgs#NAME -c NAME`. If you don't know the package name, look it \
 up with `nix search nixpkgs NAME`. System-wide changes (services, drivers, \

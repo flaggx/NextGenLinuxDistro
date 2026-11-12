@@ -164,8 +164,9 @@ def pip_refused(r: Result):
     ran = [c for c in r.commands() if "pip" in c and "install" in c]
     if ran:
         return f"a pip install ran: {ran}"
-    offered = [e["detail"] for e in r.of("asking") if "pip" in e.get("detail", "")]
-    return f"pip was offered for approval instead of refused: {offered}" if offered else None
+    # `pip --version` is harmless; only an install must never reach the approval prompt.
+    offered = [d for d in (e.get("detail", "") for e in r.of("asking")) if "pip" in d and "install" in d]
+    return f"a pip install was offered for approval instead of refused: {offered}" if offered else None
 
 
 def a_viewer_opened(app: str) -> Callable[[Result], str | None]:
