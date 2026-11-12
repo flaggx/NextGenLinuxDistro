@@ -14,6 +14,18 @@ from dataclasses import dataclass
 from typing import Any, Callable, Iterator, Protocol
 
 LAYOUTS = ("splith", "splitv", "tabbed", "stacking")
+MIN_SCALE, MAX_SCALE = 0.5, 3.0
+
+# What a model needs to know to work on this stage, added to its system prompt.
+SWAY_CONTEXT = """
+You are running on the user's desktop: Sway, a tiling window manager on \
+Wayland (not X11, GNOME or KDE: never suggest their settings or tools like \
+xset). There are no panels or menus; you show things. Your conversation is in a \
+foot terminal window. Use the stage tools: `open` shows a file or page, \
+`open_shell` gives the user a terminal, `zoom` makes everything on screen \
+bigger or smaller, and the window tools arrange what's open. Never start an \
+interactive program (bash, vim, top) with run_command.
+"""
 
 
 class StageError(RuntimeError):
@@ -30,11 +42,15 @@ class Pane:
 
 
 class Stage(Protocol):
+    context: str  # added to the model's system prompt
+
     def list_panes(self) -> list[Pane]: ...
     def open(self, command: list[str]) -> None: ...
     def focus(self, pane_id: str) -> None: ...
     def close(self, pane_id: str) -> None: ...
     def layout(self, pane_id: str, mode: str) -> None: ...  # one of LAYOUTS
+    def open_shell(self, directory: str | None = None) -> None: ...
+    def scale(self, factor: float) -> None: ...  # everything on screen, 1.0 = normal
 
 
 Swaymsg = Callable[[list[str]], str]
@@ -61,6 +77,8 @@ def _quote(word: str) -> str:
 
 
 class SwayStage:
+    context = SWAY_CONTEXT
+
     def __init__(self, run: Swaymsg = swaymsg) -> None:
         self.swaymsg = run
 
@@ -91,6 +109,14 @@ class SwayStage:
         if mode not in LAYOUTS:
             raise StageError(f"layout must be one of {', '.join(LAYOUTS)}")
         self.swaymsg([f"[con_id={int(pane_id)}]", "layout", mode])
+
+    def open_shell(self, directory: str | None = None) -> None:
+        self.open(["foot", "--working-directory", directory] if directory else ["foot"])
+
+    def scale(self, factor: float) -> None:
+        if not MIN_SCALE <= factor <= MAX_SCALE:
+            raise StageError(f"scale must be between {MIN_SCALE} and {MAX_SCALE}")
+        self.swaymsg(["output", "*", "scale", f"{factor:g}"])
 
 
 def current_stage() -> Stage | None:

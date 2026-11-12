@@ -42,7 +42,8 @@ class SandboxedRunCommand(RunCommand):
     def run(self, args: dict[str, Any]) -> str:
         try:
             proc = subprocess.run(
-                bwrap_argv(self.home, args["command"]), capture_output=True, text=True, timeout=self.timeout
+                bwrap_argv(self.home, args["command"]), stdin=subprocess.DEVNULL,
+                capture_output=True, text=True, timeout=self.timeout
             )
         except subprocess.TimeoutExpired:
             raise ToolError(f"command timed out after {self.timeout:.0f}s")

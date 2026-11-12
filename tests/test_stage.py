@@ -5,7 +5,8 @@ import pytest
 from director.permissions import Tier
 from director.stage import SwayStage
 from director.tools.base import ToolError
-from director.tools.stage import ArrangeWindow, CloseWindow, FocusWindow, ListWindows, OpenOnStage
+from director.tools import default_tools
+from director.tools.stage import ArrangeWindow, CloseWindow, FocusWindow, ListWindows, OpenOnStage, OpenShell, Zoom
 
 TREE = {
     "type": "root", "nodes": [{
@@ -80,3 +81,33 @@ def test_director_window_cant_be_closed_and_ids_are_checked():
         FocusWindow(SwayStage(FakeSway())).run({"window_id": 99})
     with pytest.raises(ToolError, match="layout must be"):
         ArrangeWindow(SwayStage(FakeSway())).run({"window_id": 11, "layout": "grid"})
+
+
+def test_open_shell_in_home_or_a_folder(tmp_path):
+    (tmp_path / "code").mkdir()
+    sway = FakeSway()
+    tool = OpenShell(SwayStage(sway), home=str(tmp_path))
+    assert tool.tier({}) is Tier.FREE
+    tool.run({})
+    tool.run({"directory": "code"})
+    assert sway.commands == [
+        ["exec", f"'foot' '--working-directory' '{tmp_path}'"],
+        ["exec", f"'foot' '--working-directory' '{tmp_path}/code'"],
+    ]
+    with pytest.raises(ToolError, match="not a folder"):
+        tool.run({"directory": "nope"})
+
+
+def test_zoom_scales_every_output_within_limits():
+    sway = FakeSway()
+    Zoom(SwayStage(sway)).run({"scale": 1.5})
+    assert sway.commands == [["output", "*", "scale", "1.5"]]
+    with pytest.raises(ToolError, match="between 0.5 and 3"):
+        Zoom(SwayStage(sway)).run({"scale": 10})
+
+
+def test_stage_tools_and_context_only_on_the_stage():
+    names = [t.name for t in default_tools(stage=SwayStage(FakeSway()))]
+    assert {"open_shell", "zoom", "list_windows"} <= set(names)
+    assert "open_shell" not in [t.name for t in default_tools()]
+    assert "Wayland" in SwayStage.context and "open_shell" in SwayStage.context

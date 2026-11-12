@@ -1,4 +1,4 @@
-"""Terminal front end for the director. The stage and props come later."""
+"""Terminal front end for the director. On the stage it runs in its own window (nixos/modules/stage.nix)."""
 
 from __future__ import annotations
 
@@ -6,11 +6,12 @@ import argparse
 import os
 import sys
 
-from .agent import Director
+from .agent import SYSTEM_PROMPT, Director
 from .models import load_model
 from .models.base import ModelError, ModelSetupError, ToolCall
 from .models.residency import Residency
 from .permissions import RunningAsRootError, ensure_not_root, make_terminal_approver
+from .stage import current_stage
 from .tiers import TieredDirector
 from .tools import default_tools
 from .undo import Snapshots
@@ -50,6 +51,9 @@ def main(argv: list[str] | None = None) -> int:
     # Approved changes get undo snapshots wherever snapper is set up for /home.
     snapshots = Snapshots()
     snapshots = snapshots if snapshots.available() else None
+    # On the stage (Sway), the director gets window tools and knows where it is.
+    stage = current_stage()
+    context = stage.context if stage else ""
     try:
         if args.worker:
             residency = Residency(args.worker)
@@ -57,20 +61,22 @@ def main(argv: list[str] | None = None) -> int:
             director = TieredDirector(
                 resident=load_model("local", args.model, keep_alive=-1),
                 worker=load_model("local", args.worker, keep_alive=args.worker_idle),
-                tools=default_tools(snapshots),
+                tools=default_tools(snapshots, stage),
                 approver=make_terminal_approver(),
                 residency=residency,
                 on_tool=show_tool,
                 snapshots=snapshots,
+                context=context,
                 on_handoff=lambda why: backstage(f"handing over to {args.worker} ({why})"),
             )
         else:
             director = Director(
                 model=load_model(args.backend, args.model),
-                tools=default_tools(snapshots),
+                tools=default_tools(snapshots, stage),
                 approver=make_terminal_approver(),
                 on_tool=show_tool,
                 snapshots=snapshots,
+                system=SYSTEM_PROMPT + context,
             )
     except ModelError as e:
         return _fail(e)

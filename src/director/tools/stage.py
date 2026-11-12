@@ -131,5 +131,41 @@ class ArrangeWindow(StageTool):
         return f"Arranged as {args['layout']}."
 
 
+class OpenShell(StageTool):
+    name = "open_shell"
+    description = (
+        "Open a terminal window for the user to type in (backstage). Use when they ask for "
+        "a shell or terminal, or want to run something interactive themselves."
+    )
+    input_schema = schema({"directory": {"type": "string", "description": "Folder to start in (default: home)."}},
+                          required=[])
+
+    def __init__(self, stage: Stage, home: str | None = None) -> None:
+        super().__init__(stage)
+        self.home = Path(home or os.path.expanduser("~"))
+
+    def act(self, args: dict[str, Any]) -> str:
+        path = Path(os.path.expanduser(args.get("directory") or str(self.home)))
+        path = path if path.is_absolute() else self.home / path
+        if not path.is_dir():
+            raise ToolError(f"not a folder: {path}")
+        self.stage.open_shell(str(path))
+        return f"Opened a terminal in {path}."
+
+
+class Zoom(StageTool):
+    name = "zoom"
+    description = (
+        "Make everything on screen bigger or smaller, text included: 1.0 is normal, "
+        "1.5 is half again as big, up to 3. Use when the user finds things too small or too big."
+    )
+    input_schema = schema({"scale": {"type": "number", "description": "1.0 normal; e.g. 1.25, 1.5, 2."}})
+
+    def act(self, args: dict[str, Any]) -> str:
+        self.stage.scale(float(args["scale"]))
+        return f"Everything is now shown at {args['scale']:g}x."
+
+
 def stage_tools(stage: Stage) -> list[Tool]:
-    return [ListWindows(stage), OpenOnStage(stage), FocusWindow(stage), CloseWindow(stage), ArrangeWindow(stage)]
+    return [ListWindows(stage), OpenOnStage(stage), OpenShell(stage), Zoom(stage),
+            FocusWindow(stage), CloseWindow(stage), ArrangeWindow(stage)]

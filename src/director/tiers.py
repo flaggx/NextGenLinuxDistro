@@ -56,6 +56,7 @@ class TieredDirector:
         on_tool: Callable[[ToolCall], None] | None = None,
         on_handoff: Callable[[str], None] | None = None,
         snapshots: Snapshots | None = None,
+        context: str = "",
     ) -> None:
         self.resident = resident
         self.worker = worker
@@ -66,12 +67,13 @@ class TieredDirector:
         self.on_tool = on_tool
         self.on_handoff = on_handoff
         self.snapshots = snapshots
+        self.context = context  # e.g. what the stage is (stage.SWAY_CONTEXT)
         self.history: list[tuple[str, str]] = []
 
     def ask(self, text: str) -> str:
         prompt = self._with_history(text)
         resident = Director(self.resident, self.tools + [Escalate()], approver=_hand_off,
-                            memory=self.memory, system=RESIDENT_PROMPT, on_tool=self.on_tool)
+                            memory=self.memory, system=RESIDENT_PROMPT + self.context, on_tool=self.on_tool)
         try:
             answer = resident.ask(prompt)
         except Handoff as handoff:
@@ -84,14 +86,14 @@ class TieredDirector:
         self.memory.record("handoff", reason=reason, blocked=blocked)
         if blocked:
             # The resident does it after all, asking the user for approval itself.
-            fallback = Director(self.resident, self.tools, approver=self.approver,
-                                memory=self.memory, on_tool=self.on_tool, snapshots=self.snapshots)
+            fallback = Director(self.resident, self.tools, approver=self.approver, memory=self.memory,
+                                system=SYSTEM_PROMPT + self.context, on_tool=self.on_tool, snapshots=self.snapshots)
             note = f"(Using the small model: the larger one isn't available because {blocked}.)"
             return f"{note}\n\n{fallback.ask(prompt)}"
         if self.on_handoff:
             self.on_handoff(reason)
-        worker = Director(self.worker, self.tools, approver=self.approver,
-                          memory=self.memory, on_tool=self.on_tool, snapshots=self.snapshots)
+        worker = Director(self.worker, self.tools, approver=self.approver, memory=self.memory,
+                          system=SYSTEM_PROMPT + self.context, on_tool=self.on_tool, snapshots=self.snapshots)
         return worker.ask(prompt)
 
     def _with_history(self, text: str) -> str:

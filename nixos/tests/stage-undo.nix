@@ -36,13 +36,24 @@ let
   '';
   stageCheck = pkgs.writeText "stage-check.py" ''
     from director.stage import current_stage
-    from director.tools.stage import ListWindows, ArrangeWindow
+    import json, subprocess, time
+    from director.tools.stage import ListWindows, ArrangeWindow, OpenShell, Zoom
     stage = current_stage()
-    out = ListWindows(stage).run({})
+    before = ListWindows(stage).run({})
+    OpenShell(stage).run({})
+    for _ in range(50):
+        out = ListWindows(stage).run({})
+        if out.count("foot") > before.count("foot"):
+            break
+        time.sleep(0.2)
+    else:
+        raise AssertionError("open_shell opened no terminal: " + out)
     print(out)
-    assert "foot" in out, out
     window = int(out.split()[1])
     ArrangeWindow(stage).run({"window_id": window, "layout": "tabbed"})
+    Zoom(stage).run({"scale": 1.5})
+    outputs = json.loads(subprocess.check_output(["swaymsg", "-t", "get_outputs", "-r"]))
+    assert outputs and all(o["scale"] == 1.5 for o in outputs), outputs
     print("stage ok")
   '';
 in
@@ -85,8 +96,6 @@ pkgs.testers.runNixOSTest {
         assert status == 0, "invalid sway config"
         machine.succeed(f"su - baldur -c '{env} sway > /tmp/sway.log 2>&1 &'")
         machine.wait_until_succeeds("su - baldur -c 'ls /tmp/rt/sway-ipc.*'")
-        machine.succeed("su - baldur -c 'export SWAYSOCK=$(ls /tmp/rt/sway-ipc.*); swaymsg exec foot'")
-        machine.wait_until_succeeds("su - baldur -c 'export SWAYSOCK=$(ls /tmp/rt/sway-ipc.*); swaymsg -t get_tree | grep -q foot'")
         print(machine.succeed("su - baldur -c 'export SWAYSOCK=$(ls /tmp/rt/sway-ipc.*); ${director} ${stageCheck}'"))
         # The conversation window opened at startup stays open even though the
         # director can't reach a model here.

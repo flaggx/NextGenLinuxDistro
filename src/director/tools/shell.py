@@ -78,7 +78,8 @@ class RunCommand(Tool):
     description = (
         "Run a shell command as the user (never root) and return its output. "
         "Read-only commands run immediately; anything else asks the user first. "
-        "Prefer find_files/read_file for simple lookups."
+        "Prefer find_files/read_file for simple lookups. Commands get no keyboard input, "
+        "so interactive programs (shells, editors, top, ssh) don't work here."
     )
     input_schema = schema(
         {
@@ -105,6 +106,9 @@ class RunCommand(Tool):
             proc = subprocess.run(
                 ["bash", "-c", args["command"]],
                 cwd=self.cwd,
+                # Nobody can type into it: an interactive program ends at once
+                # instead of waiting until the timeout.
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,

@@ -1,4 +1,3 @@
-from ..stage import current_stage
 from .base import Tool, ToolError
 from .files import FindFiles, ReadFile
 from .shell import RunCommand
@@ -6,9 +5,9 @@ from .stage import stage_tools
 from .undo import UndoLastChange
 
 
-def default_tools(snapshots=None) -> list[Tool]:
+def default_tools(snapshots=None, stage=None) -> list[Tool]:
     tools: list[Tool] = [RunCommand(), FindFiles(), ReadFile()]
-    if stage := current_stage():
+    if stage:
         tools += stage_tools(stage)
     if snapshots:
         tools.append(UndoLastChange(snapshots))

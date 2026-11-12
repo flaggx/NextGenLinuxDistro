@@ -75,3 +75,15 @@ def test_find_files_skips_hidden(tmp_path):
     (tmp_path / ".secret" / "b.txt").write_text("b")
     out = FindFiles(home=str(tmp_path)).run({"pattern": "**/*.txt", "directory": "."})
     assert "a.txt" in out and "b.txt" not in out
+
+
+def test_interactive_commands_end_instead_of_waiting_for_input(tmp_path):
+    import time
+    model = ScriptedModel([
+        Turn(tool_calls=[ToolCall("1", "run_command", {"command": "cat", "purpose": "read input"})]),
+        Turn(text="ok"),
+    ])
+    start = time.monotonic()
+    Director(model, [RunCommand(cwd=str(tmp_path), timeout=5)]).ask("go")  # plain cat runs without approval
+    assert time.monotonic() - start < 2
+    assert "[exit 0]" in model.results[0][0].content

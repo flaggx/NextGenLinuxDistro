@@ -38,7 +38,7 @@ need, and anything it changes in your files can be undone ("undo that").
 ```bash
 mkdir -p ~/director-vm && cd ~/director-vm
 nix build ~/clones/NextGenLinuxDistro#nixosConfigurations.vm.config.system.build.vm
-NIX_DISK_IMAGE=$PWD/disk.qcow2 ./result/bin/run-director-vm-vm
+TMPDIR=$PWD USE_TMPDIR=1 NIX_DISK_IMAGE=$PWD/disk.qcow2 ./result/bin/run-director-vm-vm
 ```
 
 Log in as `baldur`, password `test`. Your own desktop may catch the Super key

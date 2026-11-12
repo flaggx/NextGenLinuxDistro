@@ -126,6 +126,12 @@ in
     ];
   };
   environment.etc."sway/config".text = swayConfig;
+  # Terminals (the director's window and shells): readable by default.
+  # Ctrl+Shift+plus/minus changes it per window; the director's `zoom` scales everything.
+  environment.etc."xdg/foot/foot.ini".text = ''
+    [main]
+    font=monospace:size=12
+  '';
 
   # Login: a plain text greeter that starts Sway.
   services.greetd = {
