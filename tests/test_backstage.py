@@ -126,3 +126,16 @@ def test_tabs_are_named_after_the_command(backstage):
     names = subprocess.run(["tmux", "-L", backstage.socket, "list-windows", "-t", "backstage", "-F", "#{window_name}"],
                            capture_output=True, text=True).stdout.splitlines()
     assert names[-1] == "1: echo a fairly long command name that kee"  # the first 40 characters
+
+
+def test_finished_windows_say_so_plainly(backstage):
+    window = backstage.start("true", interactive=False)
+    backstage.wait(window, 5)
+    screen = subprocess.run(["tmux", "-L", backstage.socket, "capture-pane", "-p", "-t", window],
+                            capture_output=True, text=True).stdout
+    assert "── finished ──" in screen and "Pane is dead" not in screen
+    window = backstage.start("exit 3", interactive=False)
+    backstage.wait(window, 5)
+    screen = subprocess.run(["tmux", "-L", backstage.socket, "capture-pane", "-p", "-t", window],
+                            capture_output=True, text=True).stdout
+    assert "── finished (exit 3) ──" in screen

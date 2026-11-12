@@ -27,11 +27,14 @@ SOCKET = "director"
 SESSION = "backstage"
 KEEP_WINDOWS = 20
 HISTORY_LINES = 50_000
+# What a finished command's window says, instead of tmux's "Pane is dead (status 0, ...)".
+FINISHED = "── finished"
 
 # Runs inside the command's window. The command comes in through the
 # environment, so it never has to be quoted into another shell string, and runs
 # in a shell of its own, so an `exit` in it can't skip recording the status.
-WRAPPER = 'bash -c "$DIRECTOR_CMD"; echo $? > "$DIRECTOR_STATUS"; tmux wait-for -S "$DIRECTOR_DONE"'
+WRAPPER = ('bash -c "$DIRECTOR_CMD"; s=$?; echo $s > "$DIRECTOR_STATUS"; '
+           'tmux wait-for -S "$DIRECTOR_DONE"; exit $s')  # the window shows the command's own status
 
 
 @dataclass(frozen=True)
@@ -77,6 +80,8 @@ class Backstage:
         # Command windows stay open after they finish, so their output can be read and
         # seen (a default for every window: this tmux server is the director's alone)...
         self._tmux("set-option", "-g", "-w", "remain-on-exit", "on")
+        self._tmux("set-option", "-g", "-w", "remain-on-exit-format",
+                   FINISHED + "#{?#{!=:#{pane_dead_status},0}, (exit #{pane_dead_status}),} ──")
         # ...but the user's own shell closes normally.
         self._tmux("set-option", "-w", "-t", f"{SESSION}:0", "remain-on-exit", "off")
 
@@ -127,8 +132,9 @@ class Backstage:
 
     def output(self, window: str) -> str:
         lines = self._tmux("capture-pane", "-p", "-J", "-S", "-", "-E", "-", "-t", window).rstrip().splitlines()
-        # tmux's own "Pane is dead (status 0, ...)" notice, and the empty screen rows above it.
-        if lines and lines[-1].startswith("Pane is dead"):
+        # The "finished" notice (or tmux's own, if something else set the session up),
+        # and the empty screen rows above it.
+        if lines and lines[-1].startswith((FINISHED, "Pane is dead")):
             lines.pop()
         return "\n".join(lines).rstrip()
 
