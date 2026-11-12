@@ -246,8 +246,9 @@ for scenario in SCENARIOS:
                 "screenshot": f"{shot}.png",
             })
             print(f"{'PASS' if failure is None else 'FAIL'} {scenario.name} #{run}: {failure or ''}")
+            # After every run, so a crash keeps what's done.
+            (OUT / "scenarios.json").write_text(json.dumps(report, indent=1))
 
-(OUT / "scenarios.json").write_text(json.dumps(report, indent=1))
 print("\nscenario       passed")
 for name in dict.fromkeys(r["scenario"] for r in report):
     runs = [r for r in report if r["scenario"] == name]

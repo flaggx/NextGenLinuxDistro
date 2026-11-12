@@ -223,3 +223,18 @@ def test_permission_check_failure_fails_closed():
     director = Director(NoModel(), [Broken()], approver=lambda r: True)
     result = director._execute(ToolCall("c1", "run_command", {"command": "x", "purpose": "p"}))
     assert result.is_error and "permissions" in result.content
+
+
+def test_garbled_model_output_is_asked_again(ollama):
+    ollama.error(500, "XML syntax error on line 3: unexpected EOF")
+    ollama.reply(content="Fine now.")
+    assert LocalModel(endpoint=ollama.url).start("s", []).send_user("hi").text == "Fine now."
+    assert len(ollama.requests) == 2
+
+
+def test_garbled_output_gives_up_after_retries(ollama):
+    for _ in range(3):
+        ollama.error(500, "XML syntax error on line 3: unexpected EOF")
+    with pytest.raises(ModelError, match="couldn't read the model's reply"):
+        LocalModel(endpoint=ollama.url).start("s", []).send_user("hi")
+    assert len(ollama.requests) == 3

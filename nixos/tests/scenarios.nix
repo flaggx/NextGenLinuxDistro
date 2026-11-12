@@ -16,7 +16,7 @@ pkgs.testers.runNixOSTest {
   nodes.machine = { lib, ... }: {
     imports = modules;
     virtualisation = {
-      memorySize = 4096;
+      memorySize = 8192; # like the vm host; `nix profile install` evaluates nixpkgs (~3 GB)
       cores = 4;
       emptyDiskImages = [{ size = 4096; driveConfig.deviceExtraOpts.serial = "home"; }];
       fileSystems."/home" = {

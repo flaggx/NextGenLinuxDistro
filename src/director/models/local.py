@@ -24,6 +24,14 @@ DEFAULT_MODEL = "lfm3:1.7b"
 DEFAULT_ENDPOINT = "http://127.0.0.1:11434"
 # CPU-only machines can take minutes for one long reply.
 TIMEOUT_SECONDS = 600
+# Ollama answers 500 when it can't parse what the model generated (a tool call
+# cut short, say). Generation is random, so asking again usually works.
+GARBLED_RETRIES = 2
+GARBLED_SIGNS = ("syntax error", "unexpected eof", "failed to parse", "invalid character")
+
+
+class GarbledReply(ModelError):
+    """Ollama couldn't parse the model's output; worth asking again."""
 
 
 def endpoint_from_env() -> str:
@@ -60,6 +68,15 @@ class LocalModel:
         return LocalConversation(self, system, tools)
 
     def post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+        for attempt in range(GARBLED_RETRIES + 1):
+            try:
+                return self._post_once(path, body)
+            except GarbledReply as e:
+                if attempt == GARBLED_RETRIES:
+                    raise ModelError(str(e)) from None
+        raise AssertionError("unreachable")
+
+    def _post_once(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         request = urllib.request.Request(
             self.endpoint + path,
             data=json.dumps(body).encode(),
@@ -94,6 +111,8 @@ class LocalModel:
         except (ValueError, AttributeError):
             detail = ""
         lowered = detail.lower()
+        if e.code == 500 and any(sign in lowered for sign in GARBLED_SIGNS):
+            return GarbledReply(f"Ollama couldn't read the model's reply ({detail}).")
         if e.code == 404 or "not found" in lowered:
             return ModelSetupError(
                 f"The model {self.name!r} isn't downloaded. Run `ollama pull {self.name}`."
