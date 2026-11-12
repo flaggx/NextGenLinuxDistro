@@ -51,7 +51,7 @@ let
     print("grouped undo ok")
 
     from director.system import os_context
-    assert "nix profile add" in os_context(), "director doesn't see NixOS"
+    assert "install_program" in os_context(), "director doesn't see NixOS"
     print("nixos context ok")
   '';
   stageCheck = pkgs.writeText "stage-check.py" ''

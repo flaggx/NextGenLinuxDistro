@@ -53,8 +53,8 @@ PIP_INSTALL = re.compile(
 )
 PIP_REFUSAL = (
     "pip installs are blocked: packages from PyPI run their authors' code, and a guessed "
-    "name can be someone else's (malicious) package. Install programs with Nix instead: "
-    "`nix profile add nixpkgs#NAME`, or run one once with `nix shell nixpkgs#NAME -c NAME`."
+    "name can be someone else's (malicious) package. Install programs with install_program "
+    "instead (Python libraries are nixpkgs packages too, e.g. python313Packages.requests)."
 )
 # Redirects that write nowhere: discarding output (2>/dev/null, &>/dev/null) or
 # merging streams (2>&1). Each must stand alone as its own word (or end at a pipe).

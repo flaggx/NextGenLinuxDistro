@@ -11,14 +11,13 @@ OS_RELEASE = Path("/etc/os-release")
 # What a model needs to know about the operating system, added to its system prompt.
 NIXOS_CONTEXT = """
 This computer runs NixOS. There is no apt, dnf, pacman or snap, and pip \
-installs are blocked: never use them. Only when the user wants software \
-installed or run: install a program for them (no root needed) with \
-`nix profile add nixpkgs#NAME`; `nix profile remove NAME` \
-undoes it. To run a program once without installing it: \
-`nix shell nixpkgs#NAME -c NAME`. If you don't know the package name, look it \
-up with `nix search nixpkgs NAME`. System-wide changes (services, drivers, \
-packages for every user) belong in the NixOS configuration and need a rebuild \
-with root: describe the change to the user instead of running sudo.
+installs are blocked: never use them. For software, use the tools rather than \
+writing nix commands: install_program (run=true to start it afterwards), \
+run_program to start a program on screen (installed or not), remove_program, \
+and find_program only when you don't know a package's name. System-wide \
+changes (services, drivers, packages for every user) belong in the NixOS \
+configuration and need a rebuild with root: describe the change to the user \
+instead of running sudo.
 """
 
 

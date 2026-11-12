@@ -17,6 +17,7 @@ from .stage import current_stage
 from .system import os_context
 from .tiers import TieredDirector
 from .tools import default_tools
+from .tools.software import Nix
 from .undo import Snapshots
 
 
@@ -60,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     context = (stage.context if stage else "") + os_context()
     backstage = Backstage() if stage and Backstage.available() else None
     memory = ActivityLog(path=os.environ.get("DIRECTOR_LOG"))
+    software = bool(os_context()) and Nix.available()
     try:
         if args.worker:
             residency = Residency(args.worker)
@@ -67,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
             director = TieredDirector(
                 resident=load_model("local", args.model, keep_alive=-1),
                 worker=load_model("local", args.worker, keep_alive=args.worker_idle),
-                tools=default_tools(snapshots, stage, backstage),
+                tools=default_tools(snapshots, stage, backstage, software),
                 approver=make_terminal_approver(),
                 residency=residency,
                 on_tool=show_tool,
@@ -79,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             director = Director(
                 model=load_model(args.backend, args.model),
-                tools=default_tools(snapshots, stage, backstage),
+                tools=default_tools(snapshots, stage, backstage, software),
                 approver=make_terminal_approver(),
                 on_tool=show_tool,
                 snapshots=snapshots,
