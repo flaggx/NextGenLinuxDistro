@@ -59,6 +59,22 @@ let
     outputs = json.loads(subprocess.check_output(["swaymsg", "-t", "get_outputs", "-r"]))
     assert outputs and all(o["scale"] == 1.5 for o in outputs), outputs
     print("stage ok")
+
+    from director.backstage import Backstage
+    from director.tools import RunCommand
+    from director.tools.stage import show_backstage
+    backstage = Backstage()
+    run = RunCommand(backstage=backstage, show=lambda w: show_backstage(stage, backstage, w))
+    out = run.run({"command": "echo from-backstage; exit 4", "purpose": "test"})
+    assert "from-backstage" in out and out.endswith("[exit 4]"), out
+    print(run.run({"command": "echo shown", "purpose": "test", "show": True}))
+    for _ in range(50):
+        if any(p.app == "backstage" for p in stage.list_panes()):
+            break
+        time.sleep(0.2)
+    else:
+        raise AssertionError("show=True put no backstage window on screen")
+    print("backstage ok")
   '';
 in
 pkgs.testers.runNixOSTest {
@@ -85,6 +101,7 @@ pkgs.testers.runNixOSTest {
     machine.succeed("findmnt -no FSTYPE /home | grep -x btrfs")
     machine.succeed("btrfs subvolume show /home/.snapshots")
     machine.succeed("test \"$(stat -c %U /home/baldur)\" = baldur")
+    machine.succeed("grep -rq 'timestamp_timeout=0' /etc/sudoers")
 
     with subtest("undo restores exactly what an approved action changed"):
         print(machine.succeed("su - baldur -c '${director} ${undoCheck}'"))

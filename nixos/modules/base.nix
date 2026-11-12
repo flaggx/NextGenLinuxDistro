@@ -29,6 +29,11 @@
   networking.networkmanager.enable = true;
   zramSwap.enable = true;
 
+  # sudo asks for the password every time. Its usual few-minute grace period
+  # would let a command the director runs in the backstage terminal, right
+  # after the user used sudo there, run as root without asking.
+  security.sudo.extraConfig = "Defaults timestamp_timeout=0";
+
   users.users.baldur = {
     isNormalUser = true;
     uid = 1000; # same as on Fedora, so shared files keep their owner

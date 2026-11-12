@@ -12,12 +12,15 @@ import os
 from pathlib import Path
 from typing import Any
 
+from ..backstage import Backstage
 from ..permissions import ApprovalRequest, Tier
 from ..stage import LAYOUTS, Pane, Stage, StageError
 from .base import Tool, ToolError, schema
 
-# The director's own conversation window (see nixos/modules/stage.nix).
+# The director's own conversation window, and the backstage terminal's
+# (see nixos/modules/stage.nix).
 DIRECTOR_APP_ID = "director"
+BACKSTAGE_APP_ID = "backstage"
 
 WINDOW_ID = {"type": "integer", "description": "Window id from list_windows."}
 
@@ -166,6 +169,33 @@ class Zoom(StageTool):
         return f"Everything is now shown at {args['scale']:g}x."
 
 
-def stage_tools(stage: Stage) -> list[Tool]:
-    return [ListWindows(stage), OpenOnStage(stage), OpenShell(stage), Zoom(stage),
-            FocusWindow(stage), CloseWindow(stage), ArrangeWindow(stage)]
+class ShowTerminal(StageTool):
+    name = "show_terminal"
+    description = (
+        "Show the backstage terminal: where your commands run, one tab each, and the user's "
+        "own shell. Use when the user asks to see the terminal or what you ran."
+    )
+    input_schema = schema({})
+
+    def __init__(self, stage: Stage, backstage: Backstage) -> None:
+        super().__init__(stage)
+        self.backstage = backstage
+
+    def act(self, args: dict[str, Any]) -> str:
+        show_backstage(self.stage, self.backstage)
+        return "The backstage terminal is on screen."
+
+
+def show_backstage(stage: Stage, backstage: Backstage, window: str | None = None) -> None:
+    """Put the backstage terminal on screen, on `window`'s tab if given."""
+    if window:
+        backstage.select(window)
+    stage.present(BACKSTAGE_APP_ID, backstage.attach_command())
+
+
+def stage_tools(stage: Stage, backstage: Backstage | None = None) -> list[Tool]:
+    tools: list[Tool] = [ListWindows(stage), OpenOnStage(stage), OpenShell(stage), Zoom(stage),
+                         FocusWindow(stage), CloseWindow(stage), ArrangeWindow(stage)]
+    if backstage:
+        tools.append(ShowTerminal(stage, backstage))
+    return tools

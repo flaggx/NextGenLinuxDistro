@@ -4,10 +4,11 @@ import os
 import re
 import shlex
 import subprocess
-from typing import Any
+from typing import Any, Callable
 
+from ..backstage import Backstage, Running
 from ..permissions import ApprovalRequest, Tier
-from .base import Tool, ToolError, schema, truncate
+from .base import StillRunning, Tool, ToolError, schema, truncate
 
 # Commands that only look at things. Run without approval when used plainly.
 READ_ONLY_COMMANDS = {
@@ -93,8 +94,10 @@ class RunCommand(Tool):
     description = (
         "Run a shell command as the user (never root) and return its output. "
         "Read-only commands run immediately; anything else asks the user first. "
-        "Prefer find_files/read_file for simple lookups. Commands get no keyboard input, "
-        "so interactive programs (shells, editors, top, ssh) don't work here."
+        "Prefer find_files/read_file for simple lookups. Set show=true when the user wants to "
+        "see the program run (\"run X and show me\") or it's interactive (top, vim, ssh): it "
+        "then opens in the backstage terminal, where they can watch and type. Without show, "
+        "commands get no keyboard input."
     )
     input_schema = schema(
         {
@@ -103,12 +106,26 @@ class RunCommand(Tool):
                 "type": "string",
                 "description": "One plain-language sentence, for the user, describing the outcome.",
             },
-        }
+            "show": {"type": "boolean", "description": "Run it where the user can see and type into it."},
+        },
+        required=["command", "purpose"],
     )
 
-    def __init__(self, cwd: str | None = None, timeout: float = 60.0) -> None:
+    def __init__(
+        self,
+        cwd: str | None = None,
+        timeout: float = 60.0,
+        backstage: Backstage | None = None,
+        show: Callable[[str], None] | None = None,
+        show_wait: float = 30.0,
+    ) -> None:
         self.cwd = cwd or os.path.expanduser("~")
         self.timeout = timeout
+        # With backstage, commands run in a real terminal the user can look at;
+        # `show(window)` puts it on screen. Without, they run as plain subprocesses.
+        self.backstage = backstage
+        self.show = show
+        self.show_wait = show_wait
 
     def refusal(self, args: dict[str, Any]) -> str | None:
         return PIP_REFUSAL if PIP_INSTALL.search(args["command"]) else None
@@ -120,6 +137,8 @@ class RunCommand(Tool):
         return ApprovalRequest(tool=self.name, summary=args.get("purpose") or "run a command", detail=args["command"])
 
     def run(self, args: dict[str, Any]) -> str:
+        if self.backstage:
+            return self._run_backstage(args["command"], bool(args.get("show")))
         try:
             proc = subprocess.run(
                 ["bash", "-c", args["command"]],
@@ -138,3 +157,22 @@ class RunCommand(Tool):
             out += f"\n[stderr]\n{proc.stderr}"
         out += f"\n[exit {proc.returncode}]"
         return truncate(out.strip())
+
+    def _run_backstage(self, command: str, show: bool) -> str:
+        assert self.backstage is not None
+        window = self.backstage.start(command, interactive=show, cwd=self.cwd)
+        if show and self.show:
+            self.show(window)
+        result = self.backstage.wait(window, self.show_wait if show else self.timeout)
+        if isinstance(result, Running):
+            if not show:
+                self.backstage.stop(window)
+                raise ToolError(f"command timed out after {self.timeout:.0f}s")
+            raise StillRunning(
+                "It's still running in the backstage terminal, where the user can see and use it.",
+                lambda callback: self.backstage.when_done(window, callback),
+            )
+        if result is None:
+            raise ToolError("the command's terminal window was closed before it finished")
+        shown = " (shown to the user in the backstage terminal)" if show else ""
+        return truncate(f"{result.output}\n[exit {result.status}]{shown}".strip())

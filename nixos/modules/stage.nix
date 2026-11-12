@@ -17,6 +17,13 @@ let
     done
   '';
 
+  # Backstage (src/director/backstage.py): the terminal the director's commands
+  # run in, one tab each, with the user's own shell as the first tab.
+  director-backstage = pkgs.writeShellScriptBin "director-backstage" ''
+    swaymsg '[app_id="backstage"] focus' >/dev/null 2>&1 \
+      || swaymsg exec 'foot --app-id backstage tmux -L director new-session -A -s backstage'
+  '';
+
   # Back to the conversation: focus it, or open it again if it was closed.
   director-window = pkgs.writeShellScriptBin "director-window" ''
     swaymsg '[app_id="director"] focus' >/dev/null 2>&1 \
@@ -58,7 +65,8 @@ let
       before-sleep '${lockCmd}'
 
     bindsym $mod+space exec director-window
-    bindsym $mod+Return exec foot
+    bindsym $mod+Return exec director-backstage
+    bindsym $mod+Shift+Return exec foot
     bindsym $mod+d exec fuzzel
     bindsym $mod+i exec stage-status
     bindsym $mod+n exec foot -e nmtui
@@ -122,7 +130,7 @@ in
     extraPackages = with pkgs; [
       foot fuzzel mako libnotify swaylock swayidle grim slurp wl-clipboard
       brightnessctl pulsemixer bluetuith xdg-utils
-      director-session director-window stage-status
+      tmux director-session director-window director-backstage stage-status
     ];
   };
   environment.etc."sway/config".text = swayConfig;

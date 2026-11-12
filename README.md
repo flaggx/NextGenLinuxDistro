@@ -86,6 +86,10 @@ python -m bench.run lfm3:1.7b qwen3.5:9b --repeat 3 --out results.json
 - Approved changes run between two snapshots of `/home` (where snapper is set
   up, as on the NixOS system), so "undo that" restores exactly what the action
   changed. System changes are undone with NixOS generations.
+- On the stage, commands run in the backstage terminal (tmux): out of sight
+  unless you ask to see it or want to watch a program, and then you can type into it.
+  sudo asks for your password every time, so nothing the director sends there
+  inherits your root access.
 - Arranging windows and opening your own files need no approval; opening a
   web address does.
 - The director refuses to start as root.

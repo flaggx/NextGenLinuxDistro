@@ -22,7 +22,8 @@ need, and anything it changes in your files can be undone ("undo that").
 | Keys | Does |
 |---|---|
 | Super+Space | back to the director (reopens it if closed) |
-| Super+Enter | a shell: backstage |
+| Super+Enter | backstage: the terminal the director's commands run in (one tab each) and your shell; or ask "show me the terminal" |
+| Super+Shift+Enter | a separate terminal |
 | Super+D | app launcher |
 | Super+I | status: time, battery, Wi-Fi, volume |
 | Super+N / B / A | Wi-Fi / Bluetooth / sound settings |

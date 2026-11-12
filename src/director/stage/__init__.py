@@ -22,9 +22,12 @@ You are running on the user's desktop: Sway, a tiling window manager on \
 Wayland (not X11, GNOME or KDE: never suggest their settings or tools like \
 xset). There are no panels or menus; you show things. Your conversation is in a \
 foot terminal window. Use the stage tools: `open` shows a file or page, \
-`open_shell` gives the user a terminal, `zoom` makes everything on screen \
-bigger or smaller, and the window tools arrange what's open. Never start an \
-interactive program (bash, vim, top) with run_command.
+`show_terminal` shows the backstage terminal (where your commands run; the \
+user can type there too), `open_shell` gives the user a separate terminal, \
+`zoom` makes everything on screen bigger or smaller, and the window tools \
+arrange what's open. When the user wants to see a program run, or it's \
+interactive (top, vim, ssh), run it with run_command show=true. Never claim \
+something is on screen unless a tool put it there.
 """
 
 
@@ -51,6 +54,7 @@ class Stage(Protocol):
     def layout(self, pane_id: str, mode: str) -> None: ...  # one of LAYOUTS
     def open_shell(self, directory: str | None = None) -> None: ...
     def scale(self, factor: float) -> None: ...  # everything on screen, 1.0 = normal
+    def present(self, app: str, command: list[str]) -> None: ...  # focus that app's window, or open it
 
 
 Swaymsg = Callable[[list[str]], str]
@@ -112,6 +116,12 @@ class SwayStage:
 
     def open_shell(self, directory: str | None = None) -> None:
         self.open(["foot", "--working-directory", directory] if directory else ["foot"])
+
+    def present(self, app: str, command: list[str]) -> None:
+        if any(p.app == app for p in self.list_panes()):
+            self.swaymsg([f'[app_id="{app}"]', "focus"])
+        else:
+            self.open(["foot", "--app-id", app, *command])
 
     def scale(self, factor: float) -> None:
         if not MIN_SCALE <= factor <= MAX_SCALE:

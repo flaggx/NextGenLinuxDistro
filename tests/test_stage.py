@@ -6,7 +6,9 @@ from director.permissions import Tier
 from director.stage import SwayStage
 from director.tools.base import ToolError
 from director.tools import default_tools
-from director.tools.stage import ArrangeWindow, CloseWindow, FocusWindow, ListWindows, OpenOnStage, OpenShell, Zoom
+from director.tools.stage import (
+    ArrangeWindow, CloseWindow, FocusWindow, ListWindows, OpenOnStage, OpenShell, ShowTerminal, Zoom, show_backstage,
+)
 
 TREE = {
     "type": "root", "nodes": [{
@@ -111,3 +113,38 @@ def test_stage_tools_and_context_only_on_the_stage():
     assert {"open_shell", "zoom", "list_windows"} <= set(names)
     assert "open_shell" not in [t.name for t in default_tools()]
     assert "Wayland" in SwayStage.context and "open_shell" in SwayStage.context
+
+
+class FakeBackstage:
+    def __init__(self):
+        self.selected = []
+
+    def attach_command(self):
+        return ["tmux", "-L", "director", "new-session", "-A", "-s", "backstage"]
+
+    def select(self, window):
+        self.selected.append(window)
+
+
+def test_present_opens_or_focuses_by_app():
+    sway = FakeSway()
+    stage = SwayStage(sway)
+    stage.present("org.pwmt.zathura", ["zathura"])  # already open: focus it
+    stage.present("backstage", ["tmux", "attach"])  # not open: start it
+    assert sway.commands == [['[app_id="org.pwmt.zathura"]', "focus"],
+                             ["exec", "'foot' '--app-id' 'backstage' 'tmux' 'attach'"]]
+
+
+def test_show_terminal_and_shown_commands_select_their_tab():
+    sway, backstage = FakeSway(), FakeBackstage()
+    stage = SwayStage(sway)
+    ShowTerminal(stage, backstage).run({})
+    show_backstage(stage, backstage, "@7")
+    assert backstage.selected == ["@7"]
+    assert all(cmd[0] == "exec" and "'--app-id' 'backstage'" in cmd[1] for cmd in sway.commands)
+
+
+def test_show_terminal_only_with_backstage():
+    stage = SwayStage(FakeSway())
+    assert "show_terminal" not in [t.name for t in default_tools(stage=stage)]
+    assert "show_terminal" in [t.name for t in default_tools(stage=stage, backstage=FakeBackstage())]

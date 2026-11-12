@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Callable
 
 from ..models.base import ToolSpec
 from ..permissions import ApprovalRequest, Tier
@@ -51,3 +51,15 @@ class Tool(ABC):
 
 class ToolError(Exception):
     """Raised by a tool to report a failure back to the model."""
+
+
+class StillRunning(Exception):
+    """Raised by a tool whose action carries on after it returns (a program the
+    user is using in the backstage terminal). `when_done(callback)` arranges for
+    callback() to be called once it has finished: the undo snapshot waits for that.
+    """
+
+    def __init__(self, message: str, when_done: Callable[[Callable[[], None]], None]) -> None:
+        super().__init__(message)
+        self.message = message
+        self.when_done = when_done

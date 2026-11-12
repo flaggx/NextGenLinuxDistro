@@ -23,7 +23,7 @@ Non-technical users get a conversation. Technical users can always drop backstag
 - **Props:** existing viewers and editors wrapped as tools: a text viewer, an image viewer, a code editor (Monaco, the editor component from VS Code), media player, tables, forms.
 - **Director:** the orchestration layer, with its own harness rather than an agent framework: the permission model, the stage, the props and local-model handling are what make it different, and they are what a framework would replace. An agent loop with tools for the shell, files, the window manager and the props, plus a memory of recent activity to decide what to show and when.
 - **Model:** user's choice, either a local model or a plugged-in subscription.
-- **Backstage:** a shell is always available for manual control.
+- **Backstage:** a real terminal (a tmux session) where the director's commands run, one tab each, next to the user's own shell. Hidden until the user asks to see it or wants to watch a program; then they can watch and type. Always available for manual control.
 
 ## Permission model
 

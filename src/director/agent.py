@@ -7,7 +7,7 @@ from typing import Any, Callable
 from .memory import ActivityLog
 from .models.base import Model, ToolCall, ToolResult, Turn
 from .permissions import Approver, Tier, deny_all
-from .tools.base import Tool, ToolError
+from .tools.base import StillRunning, Tool, ToolError
 from .undo import SnapshotError, Snapshots
 
 SYSTEM_PROMPT = """\
@@ -144,9 +144,16 @@ class Director:
                 except SnapshotError as e:
                     self.memory.record("snapshot_failed", tool=call.name, error=str(e))
 
+        after_later = False
         try:
             output = tool.run(call.input)
             ok = True
+        except StillRunning as e:
+            # The user is still using it: the snapshot after it waits until it ends.
+            output, ok = e.message, True
+            if pre is not None:
+                e.when_done(lambda: self._snapshot_after(pre, call.name))
+                after_later = True
         except ToolError as e:
             output, ok = str(e), False
         except Handoff:
@@ -154,12 +161,15 @@ class Director:
         except Exception as e:  # report, don't crash the loop
             output, ok = f"{type(e).__name__}: {e}", False
         finally:
-            if pre is not None:
-                try:
-                    self.snapshots.after(pre)
-                except SnapshotError as e:
-                    self.memory.record("snapshot_failed", tool=call.name, error=str(e))
+            if pre is not None and not after_later:
+                self._snapshot_after(pre, call.name)
         if pre is None and tier is Tier.APPROVE and self.snapshots and tool.snapshot:
             output += "\n(No undo snapshot could be taken for this change.)"
         self.memory.record("tool", tool=call.name, input=call.input, ok=ok)
         return ToolResult(call.id, output, is_error=not ok)
+
+    def _snapshot_after(self, pre: int, tool: str) -> None:
+        try:
+            self.snapshots.after(pre)
+        except SnapshotError as e:
+            self.memory.record("snapshot_failed", tool=tool, error=str(e))
