@@ -315,6 +315,8 @@ for scenario in SCENARIOS:
             started = time.time()
             result = converse(turns, scenario.approvals)
             failure = "timed out waiting for an answer" if result.timed_out else scenario.check(result)
+            if failure is None and scenario.name != "zoom" and scale_above_one(result) is None:
+                failure = "zoomed the screen without being asked"
             shot = OUT / f"{scenario.name}-{run}"
             machine.screenshot(str(shot))
             report.append({

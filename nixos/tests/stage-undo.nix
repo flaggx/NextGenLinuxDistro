@@ -81,15 +81,16 @@ let
             if node.get("app_id") == "director":
                 return node
             stack += node.get("nodes", []) + node.get("floating_nodes", [])
+    screen = json.loads(subprocess.check_output(["swaymsg", "-t", "get_outputs", "-r"]))[0]["rect"]
     for _ in range(50):
         node = director_node()
-        if node and node["type"] == "floating_con":
+        if (node and node["type"] == "floating_con"
+                and node["rect"]["y"] + node["rect"]["height"] == screen["y"] + screen["height"]
+                and node["rect"]["width"] == screen["width"]):
             break
         time.sleep(0.2)
     else:
-        raise AssertionError(f"director not docked: {node}")
-    screen = json.loads(subprocess.check_output(["swaymsg", "-t", "get_outputs", "-r"]))[0]["rect"]
-    assert node["rect"]["y"] + node["rect"]["height"] == screen["y"] + screen["height"], (node["rect"], screen)
+        raise AssertionError(f"director not docked along the bottom: {node and node['rect']} on {screen}")
     print("docked ok", node["rect"])
 
     ArrangeWindow(stage).run({"window_id": window, "layout": "tabbed"})

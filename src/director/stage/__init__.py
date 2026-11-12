@@ -54,7 +54,8 @@ class Stage(Protocol):
     def layout(self, pane_id: str, mode: str) -> None: ...  # one of LAYOUTS
     def open_shell(self, directory: str | None = None) -> None: ...
     def scale(self, factor: float) -> None: ...  # everything on screen, 1.0 = normal
-    def present(self, app: str, command: list[str]) -> None: ...  # focus that app's window, or open it
+    # Focus that app's terminal window, or open one running `command`.
+    def present(self, app: str, command: list[str], terminal_args: tuple[str, ...] = ()) -> None: ...
 
 
 Swaymsg = Callable[[list[str]], str]
@@ -117,11 +118,11 @@ class SwayStage:
     def open_shell(self, directory: str | None = None) -> None:
         self.open(["foot", "--working-directory", directory] if directory else ["foot"])
 
-    def present(self, app: str, command: list[str]) -> None:
+    def present(self, app: str, command: list[str], terminal_args: tuple[str, ...] = ()) -> None:
         if any(p.app == app for p in self.list_panes()):
             self.swaymsg([f'[app_id="{app}"]', "focus"])
         else:
-            self.open(["foot", "--app-id", app, *command])
+            self.open(["foot", "--app-id", app, *terminal_args, *command])
 
     def scale(self, factor: float) -> None:
         if not MIN_SCALE <= factor <= MAX_SCALE:

@@ -86,8 +86,13 @@ class Dock:
             return
         outputs = json.loads(self.swaymsg(["-t", "get_outputs", "-r"]))
         screen = next((o["rect"] for o in outputs if o.get("name") == workspace.get("output")), workspace["rect"])
-        for command in plan(tree, workspace, screen, self.gap):
-            self.swaymsg([command])
+        commands = plan(tree, workspace, screen, self.gap)
+        if not commands:
+            return
+        # One message: sway applies it all before anything else looks, so nobody
+        # sees a half-docked window (floating but not yet moved).
+        self.swaymsg(["; ".join(commands)])
+        for command in commands:
             if command.startswith("gaps bottom all set "):
                 self.gap = int(command.rsplit(" ", 1)[1])
 

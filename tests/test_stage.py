@@ -144,7 +144,8 @@ def test_show_terminal_and_shown_commands_select_their_tab():
     ShowTerminal(stage, backstage).run({})
     show_backstage(stage, backstage, "@7")
     assert backstage.selected == ["@7"]
-    assert all(cmd[0] == "exec" and "'--app-id' 'backstage'" in cmd[1] for cmd in sway.commands)
+    assert all(cmd[0] == "exec" and "'--app-id' 'backstage' '--font=monospace:size=10'" in cmd[1]
+               for cmd in sway.commands)
 
 
 def test_show_terminal_only_with_backstage():

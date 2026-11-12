@@ -21,6 +21,8 @@ from .base import Tool, ToolError, schema
 # (see nixos/modules/stage.nix).
 DIRECTOR_APP_ID = "director"
 BACKSTAGE_APP_ID = "backstage"
+# Smaller than the conversation's 12 pt, so wide output (fastfetch, tables) fits.
+BACKSTAGE_TERMINAL = ("--font=monospace:size=10",)
 
 WINDOW_ID = {"type": "integer", "description": "Window id from list_windows."}
 
@@ -160,7 +162,8 @@ class Zoom(StageTool):
     name = "zoom"
     description = (
         "Make everything on screen bigger or smaller, text included: 1.0 is normal, "
-        "1.5 is half again as big, up to 3. Use when the user finds things too small or too big."
+        "1.5 is half again as big, up to 3. Only when the user says things are too small or too "
+        "big, or asks for normal size (1.0): never on your own."
     )
     input_schema = schema({"scale": {"type": "number", "description": "1.0 normal; e.g. 1.25, 1.5, 2."}})
 
@@ -191,7 +194,7 @@ def show_backstage(stage: Stage, backstage: Backstage, window: str | None = None
     backstage.ensure()  # set up by the director, not by the terminal attaching to it
     if window:
         backstage.select(window)
-    stage.present(BACKSTAGE_APP_ID, backstage.attach_command())
+    stage.present(BACKSTAGE_APP_ID, backstage.attach_command(), BACKSTAGE_TERMINAL)
 
 
 def stage_tools(stage: Stage, backstage: Backstage | None = None) -> list[Tool]:

@@ -21,7 +21,7 @@ let
   # run in, one tab each, with the user's own shell as the first tab.
   director-backstage = pkgs.writeShellScriptBin "director-backstage" ''
     swaymsg '[app_id="backstage"] focus' >/dev/null 2>&1 \
-      || swaymsg exec 'foot --app-id backstage tmux -L director new-session -A -s backstage'
+      || swaymsg exec 'foot --app-id backstage --font=monospace:size=10 tmux -L director new-session -A -s backstage'
   '';
 
   # Back to the conversation: focus it, or open it again if it was closed.
@@ -39,7 +39,9 @@ let
     done
     wifi=$(nmcli -t -f active,ssid dev wifi 2>/dev/null | sed -n 's/^yes://p' | head -1)
     vol=$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null | sed 's/Volume: //')
-    notify-send -t 6000 "$time" "$(printf '%s\nWi-Fi: %s\nVolume: %s' "$bat" "''${wifi:-off}" "''${vol:-?}")"
+    zoom=$(swaymsg -t get_outputs -r | jq -r '[.[].scale] | max')
+    notify-send -t 6000 "$time" "$(printf '%s\nWi-Fi: %s\nVolume: %s\nZoom: %sx (Super+0: normal)' \
+      "$bat" "''${wifi:-off}" "''${vol:-?}" "''${zoom:-1}")"
   '';
 
   swayConfig = ''
@@ -71,6 +73,7 @@ let
     bindsym $mod+Shift+Return exec foot
     bindsym $mod+d exec fuzzel
     bindsym $mod+i exec stage-status
+    bindsym $mod+0 output * scale 1
     bindsym $mod+n exec foot -e nmtui
     bindsym $mod+b exec foot -e bluetuith
     bindsym $mod+a exec foot -e pulsemixer
@@ -139,7 +142,7 @@ in
     extraPackages = with pkgs; [
       foot fuzzel mako libnotify swaylock swayidle grim slurp wl-clipboard
       brightnessctl pulsemixer bluetuith xdg-utils
-      tmux director-session director-window director-backstage stage-status
+      tmux jq director-session director-window director-backstage stage-status
     ];
   };
   environment.etc."sway/config".text = swayConfig;
