@@ -12,7 +12,7 @@ def default_tools(snapshots=None, stage=None, backstage=None, software=False) ->
     shell = RunCommand(backstage=backstage, show=show)
     tools: list[Tool] = [shell, FindFiles(), ReadFile()]
     if software:  # NixOS: installing and running programs by name
-        tools += software_tools(shell)
+        tools += software_tools(shell, launch=stage.open if stage else None)
     if stage:
         tools += stage_tools(stage, backstage)
     if snapshots:

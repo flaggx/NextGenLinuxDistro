@@ -12,11 +12,15 @@ they run between undo snapshots.
 
 from __future__ import annotations
 
+import configparser
 import json
+import os
 import re
 import shlex
 import shutil
 import subprocess
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable
 
 from ..permissions import ApprovalRequest, Tier
@@ -60,6 +64,13 @@ class Nix:
         if proc.returncode != 0:
             return []
         return list(json.loads(proc.stdout or "{}").get("elements", {}))
+
+    def outputs(self, name: str) -> list[str]:
+        """Fetch the package (without installing it) and return its store paths."""
+        proc = self.run(["nix", "build", "--no-link", "--print-out-paths", f"nixpkgs#{name}"], 1800)
+        if proc.returncode != 0:
+            raise ToolError(f"couldn't fetch {name}: {proc.stderr.strip()[-300:]}")
+        return proc.stdout.split()
 
     def search(self, query: str) -> list[tuple[str, str]]:
         proc = self.run(["nix", "search", "nixpkgs", query, "--json"], 600)
@@ -164,12 +175,52 @@ class RemoveProgram(Tool):
         return f"Removed {args['name']}."
 
 
+# Where installed programs' desktop entries are (the user's profile, the system's).
+APP_DIRS = [
+    Path("~/.nix-profile/share/applications").expanduser(),
+    Path(f"/etc/profiles/per-user/{os.environ.get('USER', '')}/share/applications"),
+    Path("/run/current-system/sw/share/applications"),
+]
+
+
+@dataclass(frozen=True)
+class DesktopEntry:
+    exec: list[str]  # without the %U-style placeholders
+    terminal: bool
+
+
+def find_entry(dirs: list[Path], name: str) -> DesktopEntry | None:
+    """The desktop entry (what app launchers use) that starts program `name`, if any."""
+    candidates = []
+    for directory in dirs:
+        for path in sorted(directory.glob("*.desktop")) if directory.is_dir() else []:
+            parser = configparser.ConfigParser(interpolation=None, strict=False)
+            try:
+                parser.read(path)
+                entry = parser["Desktop Entry"]
+            except (configparser.Error, KeyError):
+                continue
+            argv = [t for t in shlex.split(entry.get("Exec", "")) if not t.startswith("%")]
+            if not argv:
+                continue
+            binary = Path(argv[0]).name
+            if binary == name or path.stem == name:
+                rank = 0
+            elif path.stem.startswith(name):  # chromium-browser.desktop
+                rank = 1
+            else:
+                continue
+            candidates.append((rank, DesktopEntry(argv, entry.get("Terminal", "false").lower() == "true")))
+    return min(candidates, key=lambda c: c[0])[1] if candidates else None
+
+
 class RunProgram(Tool):
     name = "run_program"
     description = (
-        "Start a program on screen, in the backstage terminal, where the user sees it and can "
-        "type into it. If it isn't installed, it's fetched just for this run. Use this when "
-        "the user wants to run or see a program, rather than run_command."
+        "Start a program on screen: a graphical one (a browser, an editor) in its own window, a "
+        "terminal one in the backstage terminal where the user can see and type into it. If it "
+        "isn't installed, it's fetched just for this run. Use this when the user wants to run or "
+        "see a program, rather than run_command."
     )
     input_schema = schema(
         {
@@ -180,9 +231,18 @@ class RunProgram(Tool):
     )
     snapshot = False  # what the user then does in it is theirs
 
-    def __init__(self, nix: Nix, shell: RunCommand) -> None:
+    def __init__(
+        self,
+        nix: Nix,
+        shell: RunCommand,
+        launch: Callable[[list[str]], None] | None = None,
+        app_dirs: list[Path] | None = None,
+    ) -> None:
         self.nix = nix
         self.shell = shell  # with backstage and a way to show it
+        # Graphical programs get a window of their own (stage.open), not a terminal.
+        self.launch = launch
+        self.app_dirs = APP_DIRS if app_dirs is None else app_dirs
 
     def _command(self, name: str, args: list[str]) -> tuple[str, bool]:
         """The command line, and whether it's fetched just for this run."""
@@ -203,7 +263,28 @@ class RunProgram(Tool):
         return ApprovalRequest(tool=self.name, summary=f"run {shlex.join([args['name'], *(args.get('args') or [])])} "
                                f"on screen{note}", detail=command)
 
+    def _window_command(self, name: str, args: list[str]) -> list[str] | None:
+        """How to start `name` in a window of its own, if it's a graphical program:
+        it has a desktop entry that doesn't ask for a terminal."""
+        installed = shutil.which(name) is not None
+        outputs = [] if installed else self.nix.outputs(name)
+        dirs = self.app_dirs if installed else [Path(p) / "share" / "applications" for p in outputs]
+        entry = find_entry(dirs, name)
+        if entry is None or entry.terminal:
+            return None
+        argv = list(entry.exec)
+        if not installed and not argv[0].startswith("/"):
+            # Fetched, not installed: its programs aren't on PATH.
+            argv[0] = next((str(Path(p) / "bin" / argv[0]) for p in outputs
+                            if (Path(p) / "bin" / argv[0]).exists()), argv[0])
+        return argv + args
+
     def start(self, name: str, args: list[str]) -> str:
+        if self.launch:
+            window = self._window_command(name, args)
+            if window:
+                self.launch(window)
+                return f"Started {name} in its own window."
         command, _ = self._command(name, args)
         return self.shell.run({"command": command, "purpose": f"run {name}", "show": True})
 
@@ -211,7 +292,9 @@ class RunProgram(Tool):
         return truncate(self.start(args["name"], args.get("args") or []))
 
 
-def software_tools(shell: RunCommand, nix: Nix | None = None) -> list[Tool]:
+def software_tools(
+    shell: RunCommand, nix: Nix | None = None, launch: Callable[[list[str]], None] | None = None
+) -> list[Tool]:
     nix = nix or Nix()
-    runner = RunProgram(nix, shell)
-    return [InstallProgram(nix, runner), RunProgram(nix, shell), RemoveProgram(nix), FindProgram(nix)]
+    runner = RunProgram(nix, shell, launch)
+    return [InstallProgram(nix, runner), runner, RemoveProgram(nix), FindProgram(nix)]

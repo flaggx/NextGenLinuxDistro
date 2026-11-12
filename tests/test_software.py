@@ -112,3 +112,55 @@ def test_remove_only_what_is_installed():
 
 def test_find_program_lists_names_and_descriptions():
     assert FindProgram(Nix(run=FakeNix())).run({"query": "system info"}) == "fastfetch: system info"
+
+
+def desktop(directory, stem, exec_line, terminal="false"):
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / f"{stem}.desktop").write_text(
+        f"[Desktop Entry]\nName={stem}\nExec={exec_line}\nTerminal={terminal}\n"
+        f"[Desktop Action new-window]\nExec={exec_line.split()[0]} --new-window\n")
+
+
+class LaunchingFakeNix(FakeNix):
+    def __init__(self, outputs, **kw):
+        super().__init__(**kw)
+        self.outputs = outputs
+
+    def __call__(self, argv, timeout):
+        if argv[:2] == ["nix", "build"]:
+            return subprocess.CompletedProcess(argv, 0, "\n".join(self.outputs) + "\n", "")
+        return super().__call__(argv, timeout)
+
+
+def test_graphical_programs_get_their_own_window_not_a_terminal(tmp_path):
+    out = tmp_path / "store" / "chromium"
+    desktop(out / "share" / "applications", "chromium-browser", "chromium %U")
+    (out / "bin").mkdir()
+    (out / "bin" / "chromium").write_text("")
+    launched, shell = [], RecordingShell()
+    tool = RunProgram(Nix(run=LaunchingFakeNix([str(tmp_path / "store" / "chromium-man"), str(out)],
+                                               packages={"chromium": "web browser"})),
+                      shell, launch=launched.append, app_dirs=[])
+    assert tool.run({"name": "chromium", "args": ["example.org"]}) == "Started chromium in its own window."
+    assert launched == [[str(out / "bin" / "chromium"), "example.org"]]
+    assert shell.ran == []  # no terminal
+
+
+def test_terminal_programs_still_go_to_backstage(tmp_path):
+    out = tmp_path / "store" / "htop"
+    desktop(out / "share" / "applications", "htop", "htop", terminal="true")
+    launched, shell = [], RecordingShell()
+    tool = RunProgram(Nix(run=LaunchingFakeNix([str(out)], packages={"htop": "process viewer"})),
+                      shell, launch=launched.append, app_dirs=[])
+    tool.run({"name": "htop"})
+    assert launched == [] and shell.ran[-1]["show"] is True
+
+
+def test_installed_graphical_programs_are_found_in_the_profile(tmp_path, monkeypatch):
+    apps = tmp_path / "profile" / "share" / "applications"
+    desktop(apps, "org.gimp.GIMP", "gimp-3.0 %U")
+    monkeypatch.setattr("director.tools.software.shutil.which", lambda name: f"/bin/{name}")
+    launched = []
+    RunProgram(Nix(run=FakeNix()), RecordingShell(), launch=launched.append, app_dirs=[apps]).run(
+        {"name": "gimp-3.0"})
+    assert launched == [["gimp-3.0"]]

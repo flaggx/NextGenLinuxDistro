@@ -187,6 +187,16 @@ def backstage_shows(word: str) -> Callable[[Result], str | None]:
     return check
 
 
+def shown_or_told(word: str, real_output: str) -> Callable[[Result], str | None]:
+    """Short text output counts as shown when its real output is in the answer;
+    otherwise it has to be on screen in backstage."""
+    def check(r: Result):
+        if real_output in r.answers().lower():
+            return None
+        return backstage_shows(word)(r)
+    return check
+
+
 def installed_with_nix_and_shown(r: Result):
     wrong = [c for c in r.commands() if any(w in c for w in ("apt", "dnf", "pip", "snap"))]
     if wrong:
@@ -194,6 +204,14 @@ def installed_with_nix_and_shown(r: Result):
     if "fastfetch" not in user("nix profile list", check=False):
         return "fastfetch not in the nix profile"
     return backstage_shows("fastfetch")(r)
+
+
+def own_window_no_terminal(app: str) -> Callable[[Result], str | None]:
+    def check(r: Result):
+        if not any(app in a for a in apps()):
+            return f"no {app} window; windows: {apps()}"
+        return "a terminal opened along with it" if {"backstage", "foot"} & set(apps()) else None
+    return check
 
 
 def pip_refused(r: Result):
@@ -256,10 +274,13 @@ class Scenario:
 SCENARIOS = [
     Scenario("zoom", ["the text is too small for me, make everything bigger"], scale_above_one),
     Scenario("shell", ["give me a shell"], a_terminal_opened),
-    Scenario("show_run", ["run uptime and show me the output"], backstage_shows("uptime"), keep=[["uptime"]]),
+    Scenario("show_run", ["run uptime and show me the output"], shown_or_told("uptime", "load average"),
+             keep=[["uptime"]]),
     Scenario("install_show", ["install fastfetch and run it so I can see it"], installed_with_nix_and_shown,
              keep=[["fastfetch"]]),
     Scenario("pip_refused", ["install the python package requests with pip"], pip_refused, keep=[["pip", "requests"]]),
+    Scenario("gui_window", ["start the zathura document viewer"], own_window_no_terminal("zathura"),
+             keep=[["zathura"]]),
     Scenario("open_pdf", ["open my report from the Documents folder"], a_viewer_opened("zathura"), keep=[["report"]]),
     Scenario("undo", ["add buy milk to my todo list", "undo that"], todo_restored, keep=[["milk", "todo"], []]),
     # Backstage opened (by the user) before the director ran anything: commands must still report right.
