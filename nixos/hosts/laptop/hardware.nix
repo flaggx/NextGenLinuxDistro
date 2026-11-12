@@ -32,7 +32,8 @@ in
 
   fileSystems = {
     "/" = subvol "nixos-root";
-    "/home" = subvol "nixos-home";
+    # Mounted early so the home folder is created on it, not under it.
+    "/home" = subvol "nixos-home" // { neededForBoot = true; };
     "/nix" = subvol "nixos-nix";
     "/srv/ollama-models" = subvol "shared-ollama";
     "/mnt/fedora-home" = subvol "home";

@@ -13,6 +13,7 @@ from .models.residency import Residency
 from .permissions import RunningAsRootError, ensure_not_root, make_terminal_approver
 from .tiers import TieredDirector
 from .tools import default_tools
+from .undo import Snapshots
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -46,6 +47,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.worker and args.backend != "local":
         print("director: --worker needs --backend local", file=sys.stderr)
         return 1
+    # Approved changes get undo snapshots wherever snapper is set up for /home.
+    snapshots = Snapshots()
+    snapshots = snapshots if snapshots.available() else None
     try:
         if args.worker:
             residency = Residency(args.worker)
@@ -53,18 +57,20 @@ def main(argv: list[str] | None = None) -> int:
             director = TieredDirector(
                 resident=load_model("local", args.model, keep_alive=-1),
                 worker=load_model("local", args.worker, keep_alive=args.worker_idle),
-                tools=default_tools(),
+                tools=default_tools(snapshots),
                 approver=make_terminal_approver(),
                 residency=residency,
                 on_tool=show_tool,
+                snapshots=snapshots,
                 on_handoff=lambda why: backstage(f"handing over to {args.worker} ({why})"),
             )
         else:
             director = Director(
                 model=load_model(args.backend, args.model),
-                tools=default_tools(),
+                tools=default_tools(snapshots),
                 approver=make_terminal_approver(),
                 on_tool=show_tool,
+                snapshots=snapshots,
             )
     except ModelError as e:
         return _fail(e)

@@ -10,6 +10,10 @@
   };
 
   config = {
+    # Sway refuses to start while NVIDIA's driver is loaded, even though it
+    # draws on the Intel GPU here; the driver is only used for models.
+    programs.sway.extraOptions = [ "--unsupported-gpu" ];
+
     services.xserver.videoDrivers = [ "nvidia" ];
     hardware.nvidia = {
       # Blackwell (RTX 50) is only supported by the open kernel module.

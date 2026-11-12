@@ -7,20 +7,22 @@ architecture and permission model.
 
 ## Status
 
-Roadmap step 1 (the brain) is scaffolded: a working agent loop with a
-pluggable model, shell/file tools, and approval gating. Steps 2 to 4 have
-interfaces only.
+Roadmap step 1 (the brain) works: an agent loop with a pluggable model,
+shell/file tools, approval gating and undo. Step 2 (the stage) has its first
+tools. Steps 3 and 4 have interfaces only. `nixos/` runs it all as a system.
 
 | Path | Roadmap step | State |
 |---|---|---|
 | `src/director/agent.py` | 1. Brain: agent loop | working |
 | `src/director/models/` | 1. Pluggable model | Claude: working · local (Ollama): working |
-| `src/director/tools/` | 1. Basic tools | `run_command`, `find_files`, `read_file` |
+| `src/director/tools/` | 1. Basic tools | `run_command`, `find_files`, `read_file`, `undo_last_change` |
 | `src/director/permissions.py` | Permission model | approve-the-outcome prompts, no-root check |
-| `src/director/stage/` | 2. Compositor IPC | interface only |
+| `src/director/undo.py` | Permission model | approved changes run between btrfs snapshots (snapper); undo reverts exactly those |
+| `src/director/tiers.py` | 1. Local models | small resident model + optional worker loaded on demand |
+| `src/director/stage/` | 2. Compositor IPC | Sway: list, open, focus, arrange, close windows |
 | `src/director/props/` | 3. Props contract | draft dataclasses |
 | `src/director/memory/` | 4. Director's memory | activity log |
-| `flake.nix` | 5. The distro | dev shell only |
+| `nixos/`, `flake.nix` | 5. The distro | NixOS on Sway with undo, for this laptop and a VM ([nixos/README.md](nixos/README.md)) |
 
 ## Quick start
 
@@ -81,4 +83,9 @@ python -m bench.run lfm3:1.7b qwen3.5:9b --repeat 3 --out results.json
   including pipes between them and redirects that discard output (`2>/dev/null`).
 - Anything else (pipes, redirects, writes, deletes, `nixos-rebuild`) is shown
   to the user as a plain-language outcome to approve.
+- Approved changes run between two snapshots of `/home` (where snapper is set
+  up, as on the NixOS system), so "undo that" restores exactly what the action
+  changed. System changes are undone with NixOS generations.
+- Arranging windows and opening your own files need no approval; opening a
+  web address does.
 - The director refuses to start as root.

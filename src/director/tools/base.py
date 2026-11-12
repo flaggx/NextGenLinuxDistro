@@ -29,6 +29,8 @@ class Tool(ABC):
     name: str
     description: str
     input_schema: dict[str, Any]
+    # Approved runs are wrapped in undo snapshots unless this is False.
+    snapshot: bool = True
 
     def spec(self) -> ToolSpec:
         return ToolSpec(self.name, self.description, self.input_schema)

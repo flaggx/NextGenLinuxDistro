@@ -8,6 +8,7 @@ from .memory import ActivityLog
 from .models.base import Model, ToolCall, ToolResult, Turn
 from .permissions import Approver, Tier, deny_all
 from .tools.base import Tool, ToolError
+from .undo import SnapshotError, Snapshots
 
 SYSTEM_PROMPT = """\
 You are the director of a personal Linux desktop. The user talks to you instead \
@@ -79,11 +80,14 @@ class Director:
         memory: ActivityLog | None = None,
         system: str = SYSTEM_PROMPT,
         on_tool: Callable[[ToolCall], None] | None = None,
+        snapshots: Snapshots | None = None,
     ) -> None:
         self.tools = {t.name: t for t in tools}
         self.approver = approver
         self.memory = memory or ActivityLog()
         self.on_tool = on_tool
+        # Approved actions run between snapshots, so they can be undone (undo.py).
+        self.snapshots = snapshots
         self.conversation = model.start(system, [t.spec() for t in tools])
 
     def ask(self, text: str) -> str:
@@ -118,12 +122,21 @@ class Director:
             tier = tool.tier(call.input)
         except Exception as e:  # can't classify it, so it doesn't run
             return ToolResult(call.id, f"Couldn't check this call's permissions: {e}", is_error=True)
+        pre = None
         if tier is Tier.APPROVE:
-            request = tool.approval_request(call.input)
+            try:
+                request = tool.approval_request(call.input)
+            except ToolError as e:
+                return ToolResult(call.id, str(e), is_error=True)
             approved = self.approver(request)
             self.memory.record("approval", tool=call.name, summary=request.summary, approved=approved)
             if not approved:
                 return ToolResult(call.id, "The user declined this action.", is_error=True)
+            if self.snapshots and tool.snapshot:
+                try:
+                    pre = self.snapshots.before(request.summary)
+                except SnapshotError as e:
+                    self.memory.record("snapshot_failed", tool=call.name, error=str(e))
 
         try:
             output = tool.run(call.input)
@@ -134,5 +147,13 @@ class Director:
             raise
         except Exception as e:  # report, don't crash the loop
             output, ok = f"{type(e).__name__}: {e}", False
+        finally:
+            if pre is not None:
+                try:
+                    self.snapshots.after(pre)
+                except SnapshotError as e:
+                    self.memory.record("snapshot_failed", tool=call.name, error=str(e))
+        if pre is None and tier is Tier.APPROVE and self.snapshots and tool.snapshot:
+            output += "\n(No undo snapshot could be taken for this change.)"
         self.memory.record("tool", tool=call.name, input=call.input, ok=ok)
         return ToolResult(call.id, output, is_error=not ok)

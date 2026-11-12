@@ -6,7 +6,8 @@
   imports = [
     ./hardware.nix
     ../../modules/base.nix
-    ../../modules/desktop.nix
+    ../../modules/stage.nix
+    ../../modules/undo.nix
     ../../modules/nvidia.nix
     ../../modules/ollama.nix
     ../../modules/dev.nix

@@ -1,14 +1,52 @@
 # Running the distro
 
-`nixosConfigurations.laptop` is the machine this is developed on: NixOS with
-KDE, next to Fedora. `nixosConfigurations.vm` is the same desktop in a VM.
+`nixosConfigurations.laptop` is the machine this is developed on: NixOS next to
+Fedora, with the director's own stage instead of a desktop environment.
+`nixosConfigurations.vm` is the same system in a VM.
 
 ```
 nixos/
-  modules/      base, desktop (KDE), nvidia (hybrid, desktop on Intel), ollama, dev
+  modules/      base, stage (Sway, stripped down), undo (snapper on /home),
+                nvidia (hybrid, desktop on Intel), ollama, dev
   hosts/laptop  Alienware 16 Aurora: disk layout, bus IDs, shared Ollama models
-  hosts/vm      for trying changes:  nixos-rebuild build-vm --flake .#vm
+  hosts/vm      for trying changes (below)
+  tests/        stage-undo: nix build .#checks.x86_64-linux.stage-undo
 ```
+
+## The stage
+
+You log in at a text prompt, and Sway opens with one window: the director's
+conversation. There are no panels, bars or menus; the director opens what you
+need, and anything it changes in your files can be undone ("undo that").
+
+| Keys | Does |
+|---|---|
+| Super+Space | back to the director (reopens it if closed) |
+| Super+Enter | a shell: backstage |
+| Super+D | app launcher |
+| Super+I | status: time, battery, Wi-Fi, volume |
+| Super+N / B / A | Wi-Fi / Bluetooth / sound settings |
+| Super+Q | close the window |
+| Super+arrows, Super+Shift+arrows | move focus, move the window |
+| Super+H / V / W / S / F | split side by side / top to bottom, tabs, stack, fullscreen |
+| Super+1..5, Super+Shift+1..5 | switch workspace, send the window there |
+| Super+Escape | lock |
+| Super+Shift+E | log out |
+
+## Trying it in a VM
+
+```bash
+mkdir -p ~/director-vm && cd ~/director-vm
+nix build ~/clones/NextGenLinuxDistro#nixosConfigurations.vm.config.system.build.vm
+NIX_DISK_IMAGE=$PWD/disk.qcow2 ./result/bin/run-director-vm-vm
+```
+
+Log in as `baldur`, password `test`. Your own desktop may catch the Super key
+first: click into the VM and press Ctrl+Alt+G so it gets the keyboard. The VM's disks live in that folder
+(`disk.qcow2`, and `empty0.qcow2` for its btrfs `/home`); delete them to start
+fresh. On first boot Ollama downloads the director's model (about 1 GB), so the
+director's window says it can't find the model until that finishes: press
+Enter there to try again. No NVIDIA in the VM, so the model runs on the CPU.
 
 Once installed, every system change is a commit to this repo, applied with
 `sudo nixos-rebuild switch --flake ~/clones/NextGenLinuxDistro#laptop`. A bad
@@ -89,7 +127,7 @@ downloads a few GB; CUDA packages come from cache.nixos-cuda.org (see
 
 ### 3. First boot
 
-Pick NixOS in the boot menu (Fedora is listed below it) and log in to Plasma.
+Pick NixOS in the boot menu (Fedora is listed below it) and log in.
 NixOS has its own home folder, so bring over your SSH keys from Fedora's:
 
 ```bash
@@ -101,11 +139,12 @@ Then check:
 | What | How | Expect |
 |---|---|---|
 | NVIDIA driver | `nvidia-smi` | RTX 5060 listed |
-| Desktop on Intel | `nvidia-smi` while idle | no Plasma processes on the GPU |
+| Desktop on Intel | `nvidia-smi` while idle | no `sway` process on the GPU |
 | GPU powers off | `cat /sys/bus/pci/devices/0000:01:00.0/power/runtime_status` with no model loaded | `suspended` |
 | Ollama on GPU | `ollama run lfm3:1.7b hi && ollama ps` | `100% GPU`, models shared with Fedora |
 | Shared checkout | `ls ~/clones` | same as on Fedora |
-| Director | `director --backend local --model lfm3:1.7b what time is it` | an answer |
+| Director | ask it the time in its window | an answer |
+| Undo | `snapper -c home list`; ask it to create a folder, then "undo that" | a pre/post pair; the folder is gone |
 | Benchmark | `python -m bench.run lfm3:1.7b --tasks time,mkdir,declined` in the repo | 3 passes |
 
 ### If something goes wrong

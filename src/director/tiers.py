@@ -20,6 +20,7 @@ from .models.base import Model, ToolCall
 from .models.residency import Residency
 from .permissions import ApprovalRequest, Approver, deny_all
 from .tools.base import Tool, schema
+from .undo import Snapshots
 
 RESIDENT_PROMPT = SYSTEM_PROMPT + """
 You are the quick, small model. A larger model is available: if a request needs \
@@ -54,6 +55,7 @@ class TieredDirector:
         memory: ActivityLog | None = None,
         on_tool: Callable[[ToolCall], None] | None = None,
         on_handoff: Callable[[str], None] | None = None,
+        snapshots: Snapshots | None = None,
     ) -> None:
         self.resident = resident
         self.worker = worker
@@ -63,6 +65,7 @@ class TieredDirector:
         self.memory = memory or ActivityLog()
         self.on_tool = on_tool
         self.on_handoff = on_handoff
+        self.snapshots = snapshots
         self.history: list[tuple[str, str]] = []
 
     def ask(self, text: str) -> str:
@@ -82,13 +85,13 @@ class TieredDirector:
         if blocked:
             # The resident does it after all, asking the user for approval itself.
             fallback = Director(self.resident, self.tools, approver=self.approver,
-                                memory=self.memory, on_tool=self.on_tool)
+                                memory=self.memory, on_tool=self.on_tool, snapshots=self.snapshots)
             note = f"(Using the small model: the larger one isn't available because {blocked}.)"
             return f"{note}\n\n{fallback.ask(prompt)}"
         if self.on_handoff:
             self.on_handoff(reason)
         worker = Director(self.worker, self.tools, approver=self.approver,
-                          memory=self.memory, on_tool=self.on_tool)
+                          memory=self.memory, on_tool=self.on_tool, snapshots=self.snapshots)
         return worker.ask(prompt)
 
     def _with_history(self, text: str) -> str:

@@ -38,5 +38,15 @@
         laptop = nixos ./nixos/hosts/laptop;
         vm = nixos ./nixos/hosts/vm;
       };
+
+      checks.x86_64-linux.stage-undo = import ./nixos/tests/stage-undo.nix {
+        pkgs = nixpkgs.legacyPackages.x86_64-linux.extend overlay;
+        modules = [
+          { nixpkgs.overlays = [ overlay ]; }
+          ./nixos/modules/base.nix
+          ./nixos/modules/stage.nix
+          ./nixos/modules/undo.nix
+        ];
+      };
     };
 }
