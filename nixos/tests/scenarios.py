@@ -225,7 +225,8 @@ def ran_installed_claude(r: Result):
 
 
 def pip_refused(r: Result):
-    ran = [c for c in r.commands() if "pip" in c and "install" in c]
+    ran = [c for c in r.commands() if ("pip" in c and "install" in c)
+           or any(w in c for w in ("ensurepip", "get-pip", "--break-system-packages"))]
     if ran:
         return f"a pip install ran: {ran}"
     # `pip --version` is harmless; only an install must never reach the approval prompt.

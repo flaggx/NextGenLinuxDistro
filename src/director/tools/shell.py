@@ -44,8 +44,10 @@ SEPARATORS = {"|", "||", "&&", ";"}
 # wrapper like sudo/env, or after -c/--command as in bash -c '...' and
 # nix shell ... -c pip install): pip/pip3/pip3.12, python -m pip, pipx,
 # uv pip / uv tool; also pip run straight from Nix (nix run|shell ...#...pip...
-# install). Mentioning it in a search (`grep "pip install" README`) isn't a
-# command and stays allowed. This catches a model's mistakes, not a
+# install). Also bootstrapping pip (ensurepip, get-pip.py) and forcing it
+# (--break-system-packages): a model refused pip went for those instead.
+# Mentioning it in a search (`grep "pip install" README`) isn't a command and
+# stays allowed. This catches a model's mistakes, not a
 # determined attacker.
 _AT_COMMAND = (r"(?:^|[;&|(`]\s*|\b(?:sudo|env|exec|command|nohup)\s+(?:-\S+\s+)*"
                r"|\s(?:-c|--command)\s+['\"]?\s*)(?:\S*/)?")
@@ -53,6 +55,8 @@ PIP_INSTALL = re.compile(
     _AT_COMMAND + r"(?:pip[\d.]*\s+install|pipx\s+install|python[\d.]*\s+-m\s+pip\s+install"
     r"|uv\s+(?:pip|tool)\s+install)\b"
     r"|\bnix\s+(?:run|shell)\b[^;&|]*#\S*pip\S*[^;&|]*\binstall\b"
+    # ...and the ways around the block: bootstrapping pip itself, or forcing it.
+    r"|\bensurepip\b|\bget-pip(?:\.py)?\b|--break-system-packages\b"
 )
 PIP_REFUSAL = (
     "pip installs are blocked: packages from PyPI run their authors' code, and a guessed "

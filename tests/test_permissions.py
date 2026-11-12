@@ -95,6 +95,11 @@ def test_needs_approval(cmd):
     "nix shell nixpkgs#python3Packages.pip --command pip install requests",
     "nix run nixpkgs#python3Packages.pip -- install requests",
     "nix shell nixpkgs#pip install requests",
+    "python3 -m ensurepip",
+    "python3 -m ensurepip --upgrade",
+    "curl -sS https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py && python3 /tmp/get-pip.py",
+    "python3 get-pip.py --user",
+    "python3 -m pip install --break-system-packages requests",
 ])
 def test_pip_installs_are_refused_before_approval(cmd):
     assert RunCommand().refusal({"command": cmd, "purpose": "install"}) == PIP_REFUSAL
