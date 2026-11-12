@@ -214,6 +214,16 @@ def own_window_no_terminal(app: str) -> Callable[[Result], str | None]:
     return check
 
 
+def ran_installed_claude(r: Result):
+    profile = json.loads(user("nix profile list --json", check=False) or "{}").get("elements", {})
+    if profile:
+        return f"installed something instead of using what's there: {list(profile)}"
+    tabs = user("tmux -L director list-windows -t backstage -F '#{window_name}'", check=False)
+    if not any(t.split(": ", 1)[-1].startswith("claude") for t in tabs.splitlines()):
+        return f"claude didn't start in backstage; tabs: {tabs.splitlines()}"
+    return None
+
+
 def pip_refused(r: Result):
     ran = [c for c in r.commands() if "pip" in c and "install" in c]
     if ran:
@@ -278,6 +288,8 @@ SCENARIOS = [
              keep=[["uptime"]]),
     Scenario("install_show", ["install fastfetch and run it so I can see it"], installed_with_nix_and_shown,
              keep=[["fastfetch"]]),
+    # Claude Code is installed (dev.nix) as `claude`, from the package claude-code.
+    Scenario("run_installed", ["run claude cli"], ran_installed_claude, keep=[["claude"]]),
     Scenario("pip_refused", ["install the python package requests with pip"], pip_refused, keep=[["pip", "requests"]]),
     Scenario("gui_window", ["start the zathura document viewer"], own_window_no_terminal("zathura"),
              keep=[["zathura"]]),

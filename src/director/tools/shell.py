@@ -34,9 +34,12 @@ def _sort_unsafe(args: list[str]) -> bool:
         elif arg.startswith("-") and "o" in arg[1:]:
             return True
     return False
-# Anything that can chain, redirect or substitute makes a command non-trivial.
-# A plain pipe is checked separately: each stage must be read-only on its own.
-SHELL_METACHARS = set(";&<>`$(){}\n")
+# Anything that can redirect or substitute makes a command non-trivial. Pipes and
+# chains (| && || ;) are checked separately: each part must be read-only on its own.
+SHELL_METACHARS = set("<>`$(){}\n")
+# Reading a variable ($HOME, ${USER}) is harmless; $(...) runs a command and isn't this.
+SIMPLE_VARIABLE = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*\})")
+SEPARATORS = {"|", "||", "&&", ";"}
 # Installing from PyPI as a command (at the start, after ; & | ( `, after a
 # wrapper like sudo/env, or after -c/--command as in bash -c '...' and
 # nix shell ... -c pip install): pip/pip3/pip3.12, python -m pip, pipx,
@@ -62,21 +65,22 @@ HARMLESS_REDIRECT = re.compile(r"(?<!\S)(?:(?:\d|&)?>>?\s*/dev/null|\d?>&\d)(?![
 
 
 def is_read_only(command: str) -> bool:
-    command = HARMLESS_REDIRECT.sub(" ", command)
+    command = SIMPLE_VARIABLE.sub("VAR", HARMLESS_REDIRECT.sub(" ", command))
     if any(c in SHELL_METACHARS for c in command):
         return False
     try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars="|")
+        lexer = shlex.shlex(command, posix=True, punctuation_chars="|&;")
         lexer.whitespace_split = True
         words = list(lexer)
     except ValueError:
         return False
     stages: list[list[str]] = [[]]
     for word in words:
-        # A quoted "|" also lands here and gets treated as a pipe: the safe direction.
-        if word == "|":
+        # A quoted "|" or ";" also lands here and gets treated as a separator: the
+        # safe direction, since every part must then be read-only on its own.
+        if word in SEPARATORS:
             stages.append([])
-        elif set(word) == {"|"}:  # ||, which chains rather than pipes
+        elif set(word) <= set("|&;"):  # & (in the background), |&, ;; ...
             return False
         else:
             stages[-1].append(word)

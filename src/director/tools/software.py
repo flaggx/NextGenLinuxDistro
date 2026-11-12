@@ -34,8 +34,15 @@ NAME = {"type": "string", "description": "The program's package name in nixpkgs,
 Run = Callable[[list[str], float], subprocess.CompletedProcess]
 
 
+# The system allows unfree software (nixos/modules/base.nix); nix's own commands
+# don't read that setting, so they're told the same thing explicitly.
+UNFREE_ENV = {"NIXPKGS_ALLOW_UNFREE": "1"}
+UNFREE = ["--impure"]  # lets nix see that environment variable
+
+
 def _run(argv: list[str], timeout: float) -> subprocess.CompletedProcess:
-    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
+    return subprocess.run(argv, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL,
+                          env={**os.environ, **UNFREE_ENV})
 
 
 class Nix:
@@ -48,16 +55,23 @@ class Nix:
     def available() -> bool:
         return shutil.which("nix") is not None
 
-    def describe(self, name: str) -> str | None:
-        """The package's one-line description, or None if nixpkgs has no such package."""
+    def info(self, name: str) -> tuple[str, str] | None:
+        """(description, program name) of a package, or None if nixpkgs has no such package.
+        The program name can differ from the package's: claude-code's is `claude`."""
         if not PACKAGE.fullmatch(name):
             return None
-        proc = self.run(["nix", "eval", "--raw", f"nixpkgs#{name}.meta.description"], 120)
+        proc = self.run(["nix", "eval", "--json", f"nixpkgs#{name}.meta", *UNFREE, "--apply",
+                         "m: { d = m.description or \"\"; p = m.mainProgram or null; }"], 120)
         if proc.returncode != 0:
             if "does not provide attribute" in proc.stderr:
                 return None
             raise ToolError(f"couldn't look up {name}: {proc.stderr.strip()[-300:]}")
-        return proc.stdout.strip() or "(no description)"
+        meta = json.loads(proc.stdout)
+        return meta.get("d") or "(no description)", meta.get("p") or name.rsplit(".", 1)[-1]
+
+    def describe(self, name: str) -> str | None:
+        found = self.info(name)
+        return found[0] if found else None
 
     def installed(self) -> list[str]:
         proc = self.run(["nix", "profile", "list", "--json"], 60)
@@ -67,13 +81,13 @@ class Nix:
 
     def outputs(self, name: str) -> list[str]:
         """Fetch the package (without installing it) and return its store paths."""
-        proc = self.run(["nix", "build", "--no-link", "--print-out-paths", f"nixpkgs#{name}"], 1800)
+        proc = self.run(["nix", "build", "--no-link", "--print-out-paths", f"nixpkgs#{name}", *UNFREE], 1800)
         if proc.returncode != 0:
             raise ToolError(f"couldn't fetch {name}: {proc.stderr.strip()[-300:]}")
         return proc.stdout.split()
 
     def search(self, query: str) -> list[tuple[str, str]]:
-        proc = self.run(["nix", "search", "nixpkgs", query, "--json"], 600)
+        proc = self.run(["nix", "search", "nixpkgs", query, "--json", *UNFREE], 600)
         if proc.returncode != 0:
             raise ToolError(f"search failed: {proc.stderr.strip()[-300:]}")
         found = json.loads(proc.stdout or "{}")
@@ -81,11 +95,26 @@ class Nix:
         return [(key.split(".", 2)[-1], info.get("description", "")) for key, info in found.items()]
 
 
-def _known(nix: Nix, name: str) -> str:
-    description = nix.describe(name)
-    if description is None:
+def _known(nix: Nix, name: str) -> tuple[str, str]:
+    found = nix.info(name)
+    if found is None:
         raise ToolError(f"nixpkgs has no package called {name!r}. Use find_program to look for the right name.")
-    return description
+    return found
+
+
+def on_this_computer(words: list[str], limit: int = 10) -> list[str]:
+    """Programs already on PATH whose names contain one of `words`."""
+    words = [w.lower() for w in words if len(w) >= 3]
+    found: dict[str, None] = {}
+    for directory in os.environ.get("PATH", "").split(os.pathsep):
+        try:
+            names = sorted(os.listdir(directory))
+        except OSError:
+            continue
+        for name in names:
+            if any(w in name.lower() for w in words) and os.access(os.path.join(directory, name), os.X_OK):
+                found[name] = None
+    return list(found)[:limit]
 
 
 class FindProgram(Tool):
@@ -101,12 +130,24 @@ class FindProgram(Tool):
         self.nix = nix
 
     def run(self, args: dict[str, Any]) -> str:
+        words = re.findall(r"[\w.+-]+", args["query"].lower())
+        out = []
+        here = on_this_computer(words)
+        if here:
+            out.append("Already on this computer (start with run_program): " + ", ".join(here))
         results = self.nix.search(args["query"])
-        if not results:
-            return "Nothing found."
+
+        def score(item: tuple[str, str]) -> int:
+            name, description = item[0].lower(), item[1].lower()
+            return -(3 * sum(w in name for w in words) + sum(w in description for w in words)
+                     + (2 if name.startswith(words[0]) else 0) if words else 0)
+
+        results.sort(key=score)
         lines = [f"{name}: {description}" for name, description in results[:15]]
-        more = f"\n... and {len(results) - 15} more" if len(results) > 15 else ""
-        return "\n".join(lines) + more
+        if lines:
+            out.append("Available to install, best matches first:\n" + "\n".join(lines)
+                       + (f"\n... and {len(results) - 15} more" if len(results) > 15 else ""))
+        return "\n\n".join(out) or "Nothing found."
 
 
 class InstallProgram(Tool):
@@ -129,9 +170,10 @@ class InstallProgram(Tool):
 
     def approval_request(self, args: dict[str, Any]) -> ApprovalRequest:
         name = args["name"]
-        description = _known(self.nix, name)
-        if name in self.nix.installed():
-            raise ToolError(f"{name} is already installed." + (" Use run_program to start it." if args.get("run") else ""))
+        description, program = _known(self.nix, name)
+        if name in self.nix.installed() or shutil.which(program):
+            raise ToolError(f"{name} is already installed (its program is `{program}`). "
+                            "Use run_program to start it.")
         then = " and start it" if args.get("run") else ""
         return ApprovalRequest(
             tool=self.name,
@@ -141,7 +183,7 @@ class InstallProgram(Tool):
 
     def run(self, args: dict[str, Any]) -> str:
         name = args["name"]
-        proc = self.nix.run(["nix", "profile", "add", f"nixpkgs#{name}"], 1800)
+        proc = self.nix.run(["nix", "profile", "add", f"nixpkgs#{name}", *UNFREE], 1800)
         if proc.returncode != 0:
             raise ToolError(f"installing {name} failed: {proc.stderr.strip()[-500:]}")
         result = f"Installed {name}."
@@ -244,14 +286,23 @@ class RunProgram(Tool):
         self.launch = launch
         self.app_dirs = APP_DIRS if app_dirs is None else app_dirs
 
-    def _command(self, name: str, args: list[str]) -> tuple[str, bool]:
-        """The command line, and whether it's fetched just for this run."""
+    def _program(self, name: str) -> tuple[str, bool]:
+        """The program to start for `name`, and whether it's already on this computer.
+        `name` may be the program (claude) or its package (claude-code)."""
         if not PACKAGE.fullmatch(name):
             raise ToolError(f"{name!r} isn't a program name")
         if shutil.which(name):
-            return shlex.join([name, *args]), False
-        _known(self.nix, name)
-        return shlex.join(["nix", "shell", f"nixpkgs#{name}", "-c", name.rsplit(".", 1)[-1], *args]), True
+            return name, True
+        _, program = _known(self.nix, name)
+        return program, shutil.which(program) is not None
+
+    def _command(self, name: str, args: list[str]) -> tuple[str, bool]:
+        """The command line, and whether it's fetched just for this run."""
+        program, here = self._program(name)
+        if here:
+            return shlex.join([program, *args]), False
+        fetch = shlex.join(["nix", "shell", f"nixpkgs#{name}", *UNFREE, "-c", program, *args])
+        return f"NIXPKGS_ALLOW_UNFREE=1 {fetch}", True
 
     def tier(self, args: dict[str, Any]) -> Tier:
         command, _ = self._command(args["name"], args.get("args") or [])
@@ -266,10 +317,10 @@ class RunProgram(Tool):
     def _window_command(self, name: str, args: list[str]) -> list[str] | None:
         """How to start `name` in a window of its own, if it's a graphical program:
         it has a desktop entry that doesn't ask for a terminal."""
-        installed = shutil.which(name) is not None
+        program, installed = self._program(name)
         outputs = [] if installed else self.nix.outputs(name)
         dirs = self.app_dirs if installed else [Path(p) / "share" / "applications" for p in outputs]
-        entry = find_entry(dirs, name)
+        entry = find_entry(dirs, program) or find_entry(dirs, name)
         if entry is None or entry.terminal:
             return None
         argv = list(entry.exec)

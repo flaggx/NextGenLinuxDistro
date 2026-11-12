@@ -1,3 +1,4 @@
+import json
 import subprocess
 
 import pytest
@@ -6,6 +7,13 @@ from director.permissions import Tier
 from director.tools.base import ToolError
 from director.tools.shell import RunCommand
 from director.tools.software import FindProgram, InstallProgram, Nix, RemoveProgram, RunProgram
+
+
+@pytest.fixture(autouse=True)
+def nothing_installed_here(monkeypatch):
+    """Independent of this machine's programs; tests that need one installed say so."""
+    monkeypatch.setattr("director.tools.software.shutil.which", lambda name: None)
+    monkeypatch.setenv("PATH", "")
 
 
 class FakeNix:
@@ -19,13 +27,14 @@ class FakeNix:
     def __call__(self, argv, timeout):
         self.calls.append(argv)
         ok = lambda out="": subprocess.CompletedProcess(argv, 0, out, "")
-        if argv[:3] == ["nix", "eval", "--raw"]:
-            name = argv[3].removeprefix("nixpkgs#").removesuffix(".meta.description")
+        if argv[:3] == ["nix", "eval", "--json"]:
+            name = argv[3].removeprefix("nixpkgs#").removesuffix(".meta")
             if name in self.packages:
-                return ok(self.packages[name])
+                found = self.packages[name]
+                description, program = found if isinstance(found, tuple) else (found, None)
+                return ok(json.dumps({"d": description, "p": program}))
             return subprocess.CompletedProcess(argv, 1, "", "error: flake 'flake:nixpkgs' does not provide attribute")
         if argv[:3] == ["nix", "profile", "list"]:
-            import json
             return ok(json.dumps({"elements": {n: {} for n in self.installed}, "version": 3}))
         if argv[:3] == ["nix", "profile", "add"]:
             self.installed.append(argv[3].removeprefix("nixpkgs#"))
@@ -76,6 +85,38 @@ def test_unknown_or_already_installed_packages_never_reach_the_user():
         tool.approval_request({"name": "fastfetch"})
 
 
+def test_a_package_whose_program_has_another_name_runs_the_installed_program(monkeypatch):
+    # claude-code's program is `claude`; it's already on this computer, so nothing is fetched.
+    monkeypatch.setattr("director.tools.software.shutil.which",
+                        lambda name: "/run/current-system/sw/bin/claude" if name == "claude" else None)
+    nix, shell = FakeNix({"claude-code": ("Agentic coding tool", "claude")}), RecordingShell()
+    tool = RunProgram(Nix(run=nix), shell)
+    assert "fetched" not in tool.approval_request({"name": "claude-code"}).summary
+    tool.run({"name": "claude-code"})
+    assert shell.ran[-1]["command"] == "claude"
+    with pytest.raises(ToolError, match="already installed \\(its program is `claude`\\)"):
+        InstallProgram(Nix(run=nix)).approval_request({"name": "claude-code"})
+
+
+def test_find_program_puts_whats_installed_and_the_best_names_first(monkeypatch, tmp_path):
+    (tmp_path / "claude").write_text("")
+    (tmp_path / "claude").chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    class SearchNix(FakeNix):
+        def __call__(self, argv, timeout):
+            if argv[:2] == ["nix", "search"]:
+                return subprocess.CompletedProcess(argv, 0, json.dumps({
+                    "legacyPackages.x86_64-linux.cc-switch-cli": {"description": "manage Claude Code, Codex"},
+                    "legacyPackages.x86_64-linux.claude-code": {"description": "Agentic coding tool"},
+                }), "")
+            return super().__call__(argv, timeout)
+
+    out = FindProgram(Nix(run=SearchNix())).run({"query": "claude cli"})
+    assert out.startswith("Already on this computer (start with run_program): claude")
+    assert out.index("claude-code") < out.index("cc-switch-cli")
+
+
 def test_names_that_are_not_package_names_are_rejected():
     nix = FakeNix()
     with pytest.raises(ToolError):
@@ -90,11 +131,12 @@ def test_run_program_fetches_what_isnt_installed_and_shows_it():
     request = tool.approval_request({"name": name, "args": ["--logo", "small"]})
     assert request.summary == f"run {name} --logo small on screen (not installed: fetched just for this run)"
     tool.run({"name": name, "args": ["--logo", "small"]})
-    assert shell.ran[-1] == {"command": f"nix shell 'nixpkgs#{name}' -c {name} --logo small",
+    assert shell.ran[-1] == {"command": f"NIXPKGS_ALLOW_UNFREE=1 nix shell 'nixpkgs#{name}' --impure -c {name} --logo small",
                              "purpose": f"run {name}", "show": True}
 
 
-def test_run_program_quotes_arguments():
+def test_run_program_quotes_arguments(monkeypatch):
+    monkeypatch.setattr("director.tools.software.shutil.which", lambda name: "/bin/echo" if name == "echo" else None)
     shell = RecordingShell()
     RunProgram(Nix(run=FakeNix()), shell).run({"name": "echo", "args": ["a; rm -rf ~"]})
     assert shell.ran[-1]["command"] == "echo 'a; rm -rf ~'"
@@ -111,7 +153,8 @@ def test_remove_only_what_is_installed():
 
 
 def test_find_program_lists_names_and_descriptions():
-    assert FindProgram(Nix(run=FakeNix())).run({"query": "system info"}) == "fastfetch: system info"
+    assert FindProgram(Nix(run=FakeNix())).run({"query": "system info"}) == (
+        "Available to install, best matches first:\nfastfetch: system info")
 
 
 def desktop(directory, stem, exec_line, terminal="false"):
