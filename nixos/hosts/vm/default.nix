@@ -31,8 +31,13 @@
       # Mounted before users are set up, so the home folder lands on this disk.
       neededForBoot = true;
     };
-    # Sway needs accelerated graphics: QEMU's virtual 3D GPU (virgl).
-    qemu.options = [ "-vga none" "-device virtio-vga-gl" "-display gtk,gl=on" ];
+    # No 3D: a Nix-built QEMU can't find the host's graphics drivers on a
+    # non-NixOS host (Fedora), so Sway draws in software instead (below).
+    qemu.options = [ "-vga none" "-device virtio-vga" ];
+  };
+  environment.sessionVariables = {
+    WLR_RENDERER = "pixman";
+    WLR_NO_HARDWARE_CURSORS = "1";
   };
   boot.initrd.supportedFilesystems = [ "btrfs" ];
 
