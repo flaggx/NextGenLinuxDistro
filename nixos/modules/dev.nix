@@ -3,10 +3,6 @@
 
 {
   environment.systemPackages = with pkgs; [
-    # The director itself, built from this repo. The system runs this pinned
-    # build; development happens in the checkout and lands with a rebuild.
-    director
-
     git
     gh
     claude-code

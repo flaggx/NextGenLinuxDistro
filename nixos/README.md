@@ -16,7 +16,9 @@ nixos/
 ## The stage
 
 You log in at a text prompt, and Sway opens with one window: the director's
-conversation. There are no panels, bars or menus; the director opens what you
+conversation. When anything else opens, the conversation becomes a strip along
+the bottom of the screen and the new window takes the space above; when the
+last one closes, it fills the screen again (`director-dock`). There are no panels, bars or menus; the director opens what you
 need, and anything it changes in your files can be undone ("undo that").
 
 | Keys | Does |

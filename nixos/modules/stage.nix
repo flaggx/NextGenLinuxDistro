@@ -58,6 +58,8 @@ let
 
     # The director's conversation opens first, and stays.
     exec foot --app-id director director-session
+    # Full screen alone, a strip along the bottom once anything else opens.
+    exec director-dock
     exec mako
     exec swayidle -w \
       timeout 300 '${lockCmd}' \
@@ -148,8 +150,14 @@ in
     font=monospace:size=12
   '';
 
-  # Props (roadmap step 3): what the director's `open` shows things with.
-  environment.systemPackages = with pkgs; [ zathura imv ];
+  environment.systemPackages = with pkgs; [
+    # The director itself, built from this repo. The system runs this pinned
+    # build; development happens in the checkout and lands with a rebuild.
+    director
+    # Props (roadmap step 3): what the director's `open` shows things with.
+    zathura
+    imv
+  ];
   xdg.mime.defaultApplications = {
     "application/pdf" = "org.pwmt.zathura-pdf-mupdf.desktop";
   } // lib.genAttrs [ "image/png" "image/jpeg" "image/gif" "image/webp" "image/svg+xml" ] (_: "imv.desktop");

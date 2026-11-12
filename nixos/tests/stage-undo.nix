@@ -70,6 +70,28 @@ let
         raise AssertionError("open_shell opened no terminal: " + out)
     print(out)
     window = int(out.split()[1])
+
+    # director-dock (started by the sway config): another window is open, so the
+    # director is a strip along the bottom, and tiled windows keep clear of it.
+    def director_node():
+        tree = json.loads(subprocess.check_output(["swaymsg", "-t", "get_tree", "-r"]))
+        stack = [tree]
+        while stack:
+            node = stack.pop()
+            if node.get("app_id") == "director":
+                return node
+            stack += node.get("nodes", []) + node.get("floating_nodes", [])
+    for _ in range(50):
+        node = director_node()
+        if node and node["type"] == "floating_con":
+            break
+        time.sleep(0.2)
+    else:
+        raise AssertionError(f"director not docked: {node}")
+    screen = json.loads(subprocess.check_output(["swaymsg", "-t", "get_outputs", "-r"]))[0]["rect"]
+    assert node["rect"]["y"] + node["rect"]["height"] == screen["y"] + screen["height"], (node["rect"], screen)
+    print("docked ok", node["rect"])
+
     ArrangeWindow(stage).run({"window_id": window, "layout": "tabbed"})
     Zoom(stage).run({"scale": 1.5})
     outputs = json.loads(subprocess.check_output(["swaymsg", "-t", "get_outputs", "-r"]))
