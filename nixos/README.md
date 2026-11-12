@@ -45,9 +45,9 @@ TMPDIR=$PWD USE_TMPDIR=1 NIX_DISK_IMAGE=$PWD/disk.qcow2 ./result/bin/run-directo
 Log in as `baldur`, password `test`. Your own desktop may catch the Super key
 first: click into the VM and press Ctrl+Alt+G so it gets the keyboard. The VM's disks live in that folder
 (`disk.qcow2`, and `empty0.qcow2` for its btrfs `/home`); delete them to start
-fresh. On first boot Ollama downloads the director's model (about 1 GB), so the
-director's window says it can't find the model until that finishes: press
-Enter there to try again. No NVIDIA in the VM, so the model runs on the CPU.
+fresh. The director in the VM uses the host's Ollama (at 10.0.2.2), so Ollama
+must be running on the host with `lfm3:1.7b` pulled; answers come from the
+host's GPU.
 
 Once installed, every system change is a commit to this repo, applied with
 `sudo nixos-rebuild switch --flake ~/clones/NextGenLinuxDistro#laptop`. A bad

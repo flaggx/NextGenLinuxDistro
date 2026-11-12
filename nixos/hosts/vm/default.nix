@@ -1,20 +1,19 @@
 # The laptop's desktop in a VM, for trying changes without rebooting:
 #   nixos-rebuild build-vm --flake .#vm && ./result/bin/run-*-vm
 # Start it from a folder of its own: its disks are created there.
-# No NVIDIA here, so Ollama runs on the CPU.
-{ pkgs, ... }:
+# The director uses the host's Ollama (GPU, models already downloaded) at
+# 10.0.2.2, which QEMU's user network maps to the host; none runs in the VM.
+{ ... }:
 
 {
   imports = [
     ../../modules/base.nix
     ../../modules/stage.nix
     ../../modules/undo.nix
-    ../../modules/ollama.nix
     ../../modules/dev.nix
   ];
 
   networking.hostName = "director-vm";
-  services.ollama.package = pkgs.ollama-cpu;
   users.users.baldur.initialPassword = "test";
 
   virtualisation.vmVariant.virtualisation = {
@@ -38,6 +37,7 @@
   environment.sessionVariables = {
     WLR_RENDERER = "pixman";
     WLR_NO_HARDWARE_CURSORS = "1";
+    OLLAMA_HOST = "10.0.2.2:11434";
   };
   boot.initrd.supportedFilesystems = [ "btrfs" ];
 
