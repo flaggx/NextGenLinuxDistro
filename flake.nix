@@ -8,6 +8,12 @@
       systems = [ "x86_64-linux" "aarch64-linux" ];
       forAll = f: nixpkgs.lib.genAttrs systems (s: f nixpkgs.legacyPackages.${s});
       overlay = final: prev: { director = final.callPackage ./nix/director.nix { }; };
+      testModules = [
+        { nixpkgs.overlays = [ overlay ]; }
+        ./nixos/modules/base.nix
+        ./nixos/modules/stage.nix
+        ./nixos/modules/undo.nix
+      ];
       nixos = host: nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [ { nixpkgs.overlays = [ overlay ]; } host ];
@@ -18,6 +24,13 @@
       packages = forAll (pkgs: rec {
         director = pkgs.callPackage ./nix/director.nix { };
         default = director;
+      } // nixpkgs.lib.optionalAttrs (pkgs.stdenv.hostPlatform.system == "x86_64-linux") {
+        # The scenario harness's driver. Not a check: it needs the network and the
+        # host's Ollama (nixos/tests/scenarios.nix).
+        scenarios = (import ./nixos/tests/scenarios.nix {
+          pkgs = pkgs.extend overlay;
+          modules = testModules ++ [ ./nixos/modules/dev.nix ];
+        }).driver;
       });
 
       devShells = forAll (pkgs: {
@@ -41,12 +54,7 @@
 
       checks.x86_64-linux.stage-undo = import ./nixos/tests/stage-undo.nix {
         pkgs = nixpkgs.legacyPackages.x86_64-linux.extend overlay;
-        modules = [
-          { nixpkgs.overlays = [ overlay ]; }
-          ./nixos/modules/base.nix
-          ./nixos/modules/stage.nix
-          ./nixos/modules/undo.nix
-        ];
+        modules = testModules;
       };
     };
 }

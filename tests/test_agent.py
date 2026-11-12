@@ -100,3 +100,17 @@ def test_refused_calls_never_reach_the_user(tmp_path):
     assert asked == []
     assert "nix profile install" in model.results[0][0].content
     assert d.memory.recent(kind="refused")
+
+
+def test_activity_can_be_followed_in_a_file(tmp_path):
+    import json
+    from director.memory import ActivityLog
+    log = tmp_path / "director.jsonl"
+    model = ScriptedModel([
+        Turn(tool_calls=[ToolCall("1", "run_command", {"command": f"rm {tmp_path}/x", "purpose": "delete x"})]),
+        Turn(text="done"),
+    ])
+    d = Director(model, [RunCommand(cwd=str(tmp_path))], approver=lambda r: False, memory=ActivityLog(path=log))
+    d.ask("delete x")
+    kinds = [json.loads(line)["kind"] for line in log.read_text().splitlines()]
+    assert kinds == ["user", "asking", "approval", "answer"]

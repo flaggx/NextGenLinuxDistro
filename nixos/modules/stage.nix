@@ -126,6 +126,12 @@ in
   programs.sway = {
     enable = true;
     wrapperFeatures.gtk = true;
+    # The polkit agent (soteria) runs as a user service and needs the login
+    # session's id, which NixOS's sway setup doesn't hand to systemd. Without
+    # this it crash-loops and password prompts never appear.
+    extraSessionCommands = ''
+      systemctl --user import-environment XDG_SESSION_ID XDG_SESSION_TYPE
+    '';
     # Only what the config above uses; the module's defaults include a menu and bar.
     extraPackages = with pkgs; [
       foot fuzzel mako libnotify swaylock swayidle grim slurp wl-clipboard
@@ -140,6 +146,12 @@ in
     [main]
     font=monospace:size=12
   '';
+
+  # Props (roadmap step 3): what the director's `open` shows things with.
+  environment.systemPackages = with pkgs; [ zathura imv ];
+  xdg.mime.defaultApplications = {
+    "application/pdf" = "org.pwmt.zathura-pdf-mupdf.desktop";
+  } // lib.genAttrs [ "image/png" "image/jpeg" "image/gif" "image/webp" "image/svg+xml" ] (_: "imv.desktop");
 
   # Login: a plain text greeter that starts Sway.
   services.greetd = {

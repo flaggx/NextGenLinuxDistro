@@ -84,7 +84,7 @@ class Director:
     ) -> None:
         self.tools = {t.name: t for t in tools}
         self.approver = approver
-        self.memory = memory or ActivityLog()
+        self.memory = memory if memory is not None else ActivityLog()
         self.on_tool = on_tool
         # Approved actions run between snapshots, so they can be undone (undo.py).
         self.snapshots = snapshots
@@ -96,10 +96,14 @@ class Director:
         turn = self.conversation.send_user(text)
         for _ in range(MAX_STEPS):
             if not turn.wants_tools:
-                return self._final(turn)
+                answer = self._final(turn)
+                self.memory.record("answer", text=answer)
+                return answer
             results = [self._execute(call) for call in turn.tool_calls]
             turn = self.conversation.send_tool_results(results)
-        return "I stopped after too many steps; tell me how you'd like to continue."
+        answer = "I stopped after too many steps; tell me how you'd like to continue."
+        self.memory.record("answer", text=answer)
+        return answer
 
     def _final(self, turn: Turn) -> str:
         if turn.stop_reason == "max_tokens":
@@ -134,6 +138,7 @@ class Director:
                 request = tool.approval_request(call.input)
             except ToolError as e:
                 return ToolResult(call.id, str(e), is_error=True)
+            self.memory.record("asking", tool=call.name, summary=request.summary, detail=request.detail)
             approved = self.approver(request)
             self.memory.record("approval", tool=call.name, summary=request.summary, approved=approved)
             if not approved:

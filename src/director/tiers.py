@@ -63,7 +63,7 @@ class TieredDirector:
         self.tools = tools
         self.approver = approver
         self.residency = residency
-        self.memory = memory or ActivityLog()
+        self.memory = memory if memory is not None else ActivityLog()
         self.on_tool = on_tool
         self.on_handoff = on_handoff
         self.snapshots = snapshots

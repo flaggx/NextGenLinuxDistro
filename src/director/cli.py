@@ -8,6 +8,7 @@ import sys
 
 from .agent import SYSTEM_PROMPT, Director
 from .backstage import Backstage
+from .memory import ActivityLog
 from .models import load_model
 from .models.base import ModelError, ModelSetupError, ToolCall
 from .models.residency import Residency
@@ -58,6 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     stage = current_stage()
     context = (stage.context if stage else "") + os_context()
     backstage = Backstage() if stage and Backstage.available() else None
+    memory = ActivityLog(path=os.environ.get("DIRECTOR_LOG"))
     try:
         if args.worker:
             residency = Residency(args.worker)
@@ -71,6 +73,7 @@ def main(argv: list[str] | None = None) -> int:
                 on_tool=show_tool,
                 snapshots=snapshots,
                 context=context,
+                memory=memory,
                 on_handoff=lambda why: narrate(f"handing over to {args.worker} ({why})"),
             )
         else:
@@ -81,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
                 on_tool=show_tool,
                 snapshots=snapshots,
                 system=SYSTEM_PROMPT + context,
+                memory=memory,
             )
     except ModelError as e:
         return _fail(e)
@@ -93,6 +97,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     print("Director ready. Ctrl-D to leave.")
+    memory.record("ready")
     while True:
         try:
             text = input("\n› ").strip()
@@ -104,9 +109,11 @@ def main(argv: list[str] | None = None) -> int:
         try:
             print(director.ask(text))
         except ModelSetupError as e:
+            memory.record("error", text=str(e))
             return _fail(e)
         except ModelError as e:
             # Transient (network, rate limit): keep the conversation open.
+            memory.record("error", text=str(e))
             print(f"director: {e}", file=sys.stderr)
 
 
