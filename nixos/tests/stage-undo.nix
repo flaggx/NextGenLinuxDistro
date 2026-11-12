@@ -41,10 +41,13 @@ let
         pre = s.before(f"{step} change", "request-1")
         (home / "a").write_text((home / "a").read_text() + step)
         s.after(pre)
+        # Something else writes between the two actions (a log, a browser...).
+        (home / "between.log").write_text((home / "between.log").read_text() + step if step == "second" else step)
     group = last_request(s.changes())
     assert [c.description for c in group] == ["first change", "second change"], group
     s.undo(group)
     assert (home / "a").read_text() == "a", (home / "a").read_text()
+    assert (home / "between.log").read_text() == "firstsecond", "undo reverted a file it didn't change"
     print("grouped undo ok")
 
     from director.system import os_context

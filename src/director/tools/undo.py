@@ -50,5 +50,4 @@ class UndoLastChange(Tool):
 
 
 def _describe(changes: list[Change]) -> str:
-    first = f'"{changes[0].description}"'
-    return first if len(changes) == 1 else f"{first} and {len(changes) - 1} more change(s) from the same request"
+    return "; ".join(f'"{c.description}"' for c in changes)

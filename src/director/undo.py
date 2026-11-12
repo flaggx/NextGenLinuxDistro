@@ -96,18 +96,17 @@ class Snapshots:
                                     request.group(1) if request else ""))
         return found
 
-    @staticmethod
-    def _span(changes: list[Change]) -> str:
-        # From before the first change to after the last: everything they did,
-        # and nothing the user did before or after them.
-        return f"{changes[0].pre}..{changes[-1].post}"
-
     def changed_files(self, changes: list[Change]) -> list[str]:
-        out = self._snapper("status", self._span(changes))
-        # Lines look like "c..... /home/me/file": a status code, then the path.
-        return [line.split(None, 1)[1] for line in out.splitlines() if " " in line.strip()]
+        files: dict[str, None] = {}
+        for change in changes:
+            out = self._snapper("status", f"{change.pre}..{change.post}")
+            # Lines look like "c..... /home/me/file": a status code, then the path.
+            files.update((line.split(None, 1)[1], None) for line in out.splitlines() if " " in line.strip())
+        return list(files)
 
     def undo(self, changes: list[Change]) -> None:
-        self._snapper("undochange", self._span(changes))
-        for change in changes:
+        # Each action within its own pre/post pair, last first: what other programs
+        # (or the user) wrote between the actions stays as it is.
+        for change in reversed(changes):
+            self._snapper("undochange", f"{change.pre}..{change.post}")
             self._snapper("modify", "--userdata", f"{TAG}=yes,undone=yes", str(change.pre))

@@ -133,8 +133,8 @@ def test_undo_covers_every_change_of_the_last_request(tmp_path):
                  approver=lambda r: asked.append(r) or True, snapshots=snaps)
     d.ask("make a and b")
     d.ask("undo that")
-    assert snapper.undone == ["1..4"]  # before the first change to after the last
-    assert 'undo "create a" and 1 more change(s) from the same request' in asked[-1].summary
+    assert snapper.undone == ["3..4", "1..2"]  # each action on its own, last first
+    assert 'undo "create a"; "create b"' in asked[-1].summary
     assert snaps.changes() == []
 
 
@@ -145,5 +145,5 @@ def test_an_earlier_request_stays_when_the_last_is_undone():
     snaps.after(snaps.before("later one", "req2"))
     snaps.after(snaps.before("later two", "req2"))
     UndoLastChange(snaps).run({})
-    assert snapper.undone == ["3..6"]
+    assert snapper.undone == ["5..6", "3..4"]
     assert [c.description for c in snaps.changes()] == ["earlier"]
