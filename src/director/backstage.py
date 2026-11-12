@@ -85,12 +85,13 @@ class Backstage:
         self.ensure()
         self._count += 1
         n = self._count
+        name = f"{n}: {command.splitlines()[0][:40] if command.strip() else ''}"
         if not interactive:
             # Nobody can type into it: an interactive program ends instead of waiting.
             command = "{ " + command + "\n} </dev/null"
         window = self._tmux(
             "new-window", "-d", "-P", "-F", "#{window_id}", "-t", SESSION, "-c", cwd or self.home,
-            "-n", f"{n}: {command.split(chr(10))[0][:24]}",
+            "-n", name,
             "-e", f"DIRECTOR_CMD={command}",
             "-e", f"DIRECTOR_STATUS={self.state / f'{n}.status'}",
             "-e", f"DIRECTOR_DONE=director-done-{n}",

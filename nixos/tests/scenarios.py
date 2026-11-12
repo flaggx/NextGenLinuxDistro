@@ -147,7 +147,8 @@ def backstage_shows(word: str) -> Callable[[Result], str | None]:
         if "backstage" not in apps():
             return f"backstage not on screen; windows: {apps()}"
         tabs = user("tmux -L director list-windows -t backstage -F '#{window_name}'", check=False)
-        return None if word in tabs else f"no '{word}' tab in backstage: {tabs.split()}"
+        shown = user("tmux -L director capture-pane -p -t backstage", check=False)  # the tab on screen
+        return None if word in tabs or word in shown else f"no '{word}' in backstage: tabs {tabs.splitlines()}"
     return check
 
 

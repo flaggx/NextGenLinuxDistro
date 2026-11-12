@@ -119,3 +119,10 @@ def test_status_survives_a_closed_window(backstage):
     backstage.wait(window, 5)
     backstage.stop(window)
     assert backstage.wait(window, 1) is not None  # the recorded status, not "vanished"
+
+
+def test_tabs_are_named_after_the_command(backstage):
+    run(backstage, "echo a fairly long command name that keeps going and going")
+    names = subprocess.run(["tmux", "-L", backstage.socket, "list-windows", "-t", "backstage", "-F", "#{window_name}"],
+                           capture_output=True, text=True).stdout.splitlines()
+    assert names[-1] == "1: echo a fairly long command name that kee"  # the first 40 characters
