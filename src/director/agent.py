@@ -118,6 +118,12 @@ class Director:
         if self.on_tool:
             self.on_tool(call)
 
+        refusal = tool.refusal(call.input)
+        if refusal:
+            # Never even offered to the user for approval.
+            self.memory.record("refused", tool=call.name, input=call.input, reason=refusal)
+            return ToolResult(call.id, refusal, is_error=True)
+
         try:
             tier = tool.tier(call.input)
         except Exception as e:  # can't classify it, so it doesn't run

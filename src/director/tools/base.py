@@ -35,6 +35,10 @@ class Tool(ABC):
     def spec(self) -> ToolSpec:
         return ToolSpec(self.name, self.description, self.input_schema)
 
+    def refusal(self, args: dict[str, Any]) -> str | None:
+        """Why this call must never run, even with approval; None if it may."""
+        return None
+
     def tier(self, args: dict[str, Any]) -> Tier:
         return Tier.FREE
 

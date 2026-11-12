@@ -87,3 +87,16 @@ def test_interactive_commands_end_instead_of_waiting_for_input(tmp_path):
     Director(model, [RunCommand(cwd=str(tmp_path), timeout=5)]).ask("go")  # plain cat runs without approval
     assert time.monotonic() - start < 2
     assert "[exit 0]" in model.results[0][0].content
+
+
+def test_refused_calls_never_reach_the_user(tmp_path):
+    model = ScriptedModel([
+        Turn(tool_calls=[ToolCall("1", "run_command", {"command": "pip install fastfetch", "purpose": "install"})]),
+        Turn(text="I'll use nix instead"),
+    ])
+    asked = []
+    d = Director(model, [RunCommand(cwd=str(tmp_path))], approver=lambda r: asked.append(r) or True)
+    d.ask("install fastfetch")
+    assert asked == []
+    assert "nix profile install" in model.results[0][0].content
+    assert d.memory.recent(kind="refused")

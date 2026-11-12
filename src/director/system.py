@@ -6,6 +6,28 @@ from pathlib import Path
 
 POWER_SUPPLY = Path("/sys/class/power_supply")
 MEMINFO = Path("/proc/meminfo")
+OS_RELEASE = Path("/etc/os-release")
+
+# What a model needs to know about the operating system, added to its system prompt.
+NIXOS_CONTEXT = """
+This computer runs NixOS. There is no apt, dnf, pacman or snap, and pip \
+installs are blocked: never use them. To install a program for the user (no \
+root needed): `nix profile install nixpkgs#NAME`; `nix profile remove NAME` \
+undoes it. To run a program once without installing it: \
+`nix shell nixpkgs#NAME -c NAME`. If you don't know the package name, look it \
+up with `nix search nixpkgs NAME`. System-wide changes (services, drivers, \
+packages for every user) belong in the NixOS configuration and need a rebuild \
+with root: describe the change to the user instead of running sudo.
+"""
+
+
+def os_context(os_release: Path = OS_RELEASE) -> str:
+    """Instructions for the operating system the director runs on, if it needs any."""
+    try:
+        fields = dict(line.split("=", 1) for line in os_release.read_text().splitlines() if "=" in line)
+    except OSError:
+        return ""
+    return NIXOS_CONTEXT if fields.get("ID", "").strip('"') == "nixos" else ""
 
 
 def on_battery(supplies: Path = POWER_SUPPLY) -> bool:

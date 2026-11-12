@@ -1,6 +1,6 @@
 import pytest
 
-from director.tools.shell import is_read_only
+from director.tools.shell import PIP_REFUSAL, RunCommand, is_read_only
 
 
 @pytest.mark.parametrize("cmd", [
@@ -62,3 +62,33 @@ def test_read_only(cmd):
 ])
 def test_needs_approval(cmd):
     assert not is_read_only(cmd)
+
+
+@pytest.mark.parametrize("cmd", [
+    "pip install fastfetch",
+    "pip3 install --user fastfetch",
+    "pip3.12 install requests",
+    "/usr/bin/pip install x",
+    "python3 -m pip install x",
+    "pipx install fastfetch",
+    "uv pip install x",
+    "uv tool install x",
+    "sudo pip install x",
+    "sudo -H pip install x",
+    "cd /tmp && pip install x",
+    "true; pip install x",
+    "echo hi | pip install x",
+    "env pip install x",
+    "bash -c 'pip install x'",
+    'sh -c "cd /tmp; pip install x"',
+])
+def test_pip_installs_are_refused_before_approval(cmd):
+    assert RunCommand().refusal({"command": cmd, "purpose": "install"}) == PIP_REFUSAL
+
+
+@pytest.mark.parametrize("cmd", [
+    "pip list", "pip show requests", "grep 'pip install' README.md", "nix profile install nixpkgs#fastfetch",
+    "echo pipinstall",
+])
+def test_other_pip_use_and_mentions_are_allowed(cmd):
+    assert RunCommand().refusal({"command": cmd, "purpose": "x"}) is None

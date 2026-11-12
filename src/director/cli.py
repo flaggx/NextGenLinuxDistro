@@ -12,6 +12,7 @@ from .models.base import ModelError, ModelSetupError, ToolCall
 from .models.residency import Residency
 from .permissions import RunningAsRootError, ensure_not_root, make_terminal_approver
 from .stage import current_stage
+from .system import os_context
 from .tiers import TieredDirector
 from .tools import default_tools
 from .undo import Snapshots
@@ -51,9 +52,10 @@ def main(argv: list[str] | None = None) -> int:
     # Approved changes get undo snapshots wherever snapper is set up for /home.
     snapshots = Snapshots()
     snapshots = snapshots if snapshots.available() else None
-    # On the stage (Sway), the director gets window tools and knows where it is.
+    # On the stage (Sway), the director gets window tools; on NixOS it learns how
+    # software is installed there. Both go into its system prompt.
     stage = current_stage()
-    context = stage.context if stage else ""
+    context = (stage.context if stage else "") + os_context()
     try:
         if args.worker:
             residency = Residency(args.worker)

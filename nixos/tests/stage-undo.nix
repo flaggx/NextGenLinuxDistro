@@ -33,6 +33,10 @@ let
     assert not new.exists()
     assert s.changes() == [], "undone change still listed"
     print("undo ok")
+
+    from director.system import os_context
+    assert "nix profile install" in os_context(), "director doesn't see NixOS"
+    print("nixos context ok")
   '';
   stageCheck = pkgs.writeText "stage-check.py" ''
     from director.stage import current_stage
